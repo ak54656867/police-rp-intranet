@@ -5,7 +5,7 @@
 </style></head><body><div class="layout"><aside id="sidebar"><div class="brand"><div class="crest">✦</div><div><strong>POLICE INTRANET</strong><small>RP ORGANIZATION SYSTEM</small></div></div><div><div class="section-label">WORKSPACE</div><nav class="nav" id="nav"><button class="active" data-page="home"><span class="ico">▦</span>종합 대시보드</button><button data-page="personnel"><span class="ico">♙</span>인사·조직 관리</button><button data-page="attendance"><span class="ico">◷</span>근무 관리</button><button data-page="incidents"><span class="ico">⚑</span>사건 관리</button><button data-page="wanted"><span class="ico">⌕</span>수배자 관리</button><button data-page="dispatch"><span class="ico">◉</span>상황실·출동</button><button data-page="leave"><span class="ico">▣</span>휴가 신청</button><button data-page="assets"><span class="ico">▤</span>차량·장비</button><button data-page="notices"><span class="ico">▤</span>공지·공문</button><button data-page="documents"><span class="ico">▧</span>문서·보고서</button><button data-page="audit"><span class="ico">☷</span>감사 로그</button></nav></div><div class="aside-bottom"><span class="online"></span>시스템 미리보기 모드<br><span style="display:block;margin:8px 0 0 14px">이 브라우저에 데이터 저장</span></div></aside><main><header class="topbar"><div><button class="mobile-menu" id="menu">☰</button><span class="crumb">경찰청 / <b id="crumb">종합 대시보드</b></span></div><div class="top-right"><button class="btn" id="settingsBtn" type="button">⚙ 연동 설정</button><button class="btn primary" id="discordBtn" type="button">Discord 로그인</button><span class="tag" id="modeTag">LOCAL DEMO</span><div class="user"><div class="avatar" id="userAvatar">경</div><div><b id="userName">시스템 미리보기</b><small id="userMeta">경위 · 생활안전과</small></div></div></div></header><div class="content"><section class="heading"><div><div class="eyebrow" id="eyebrow">COMMAND CENTER / OVERVIEW</div><h1 id="title">종합 대시보드</h1><p id="desc">조직 운영 현황과 주요 업무를 한눈에 확인합니다.</p></div><button class="btn primary" id="mainAction">＋ 새 기록 등록</button></section><div id="pageContent"></div><div class="footer"><span>POLICE INTRANET · RP ORGANIZATION MANAGEMENT</span><span>FICTIONAL ROLEPLAY USE ONLY</span></div></div></main></div><div id="modalHost"></div><div id="toast" class="toast hidden"></div><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const defaults={wanted:[],dispatch:[],leave:[],assets:[],documents:[],personnel:[{id:1,name:'김도윤',rank:'경정',dept:'생활안전과',role:'부서 관리자'},{id:2,name:'박서준',rank:'경위',dept:'교통안전과',role:'경찰관'},{id:3,name:'이하준',rank:'경사',dept:'지역치안계',role:'경찰관'},{id:4,name:'최유진',rank:'경장',dept:'교통관리계',role:'경찰관'}],attendance:[],incidents:[{id:1,no:'RP-2026-0108',title:'중앙역 인근 교통사고',owner:'박서준',status:'조사 중',priority:'보통',date:new Date().toISOString()},{id:2,no:'RP-2026-0107',title:'상점 절도 신고',owner:'이하준',status:'접수',priority:'높음',date:new Date(Date.now()-3600000).toISOString()}],notices:[{id:1,title:'경찰청 근무 수칙 및 복무 기준 안내',category:'긴급',author:'경찰청장',date:new Date().toISOString(),body:'RP 내 근무 수칙을 확인하고, 모든 업무 기록은 사실에 근거하여 작성해 주시기 바랍니다.'},{id:2,title:'정기 인사발령 공고',category:'인사',author:'인사과',date:new Date(Date.now()-86400000).toISOString(),body:'정기 인사발령 공고입니다. 세부 사항은 인사 담당 부서에 문의해 주세요.'},{id:3,title:'상황실 무전 채널 운영 안내',category:'지시',author:'상황실',date:new Date(Date.now()-172800000).toISOString(),body:'상황실 운영 시 지정된 RP 무전 채널을 이용해 주세요.'}],audit:[]};
-let data;try{data={...defaults,...(JSON.parse(localStorage.getItem('policeRpData'))||{})}}catch{data={...defaults}}let page='home',query='',modalType='',supabaseClient=null,authUser=null;
+let data;try{data={...defaults,...(JSON.parse(localStorage.getItem('policeRpData'))||{})}}catch{data={...defaults}}let page='home',query='',modalType='',supabaseClient=null,authUser=null,authProfile=null;
 let cloudReady=false,cloudApplying=false,cloudChannel=null,lastSavedSnapshot=JSON.stringify(data),syncQueue=Promise.resolve();
 const cloudModules=['personnel','attendance','incidents','wanted','dispatch','leave','assets','notices','documents','audit'];
 function save(){
@@ -121,14 +121,52 @@ async function ensureProfile(){
  if(!supabaseClient||!authUser)return;
  const meta=authUser.user_metadata||{};
  const display=meta.full_name||meta.name||meta.global_name||authUser.email||'Discord 사용자';
- const {error}=await supabaseClient.from('profiles').upsert({id:authUser.id,display_name:display},{onConflict:'id',ignoreDuplicates:true});
+ const {error:upsertError}=await supabaseClient.from('profiles').upsert({id:authUser.id,display_name:display},{onConflict:'id',ignoreDuplicates:true});
+ if(upsertError)throw upsertError;
+ const {data:profile,error}=await supabaseClient.from('profiles').select('*').eq('id',authUser.id).single();
  if(error)throw error;
+ authProfile=profile;
+ updateAuthUI();
+ if(profile.status!=='approved' && profile.role!=='admin') showOnboarding();
+ else closeModal();
 }
 function updateAuthUI(){
  const name=document.getElementById('userName'),meta=document.getElementById('userMeta'),avatar=document.getElementById('userAvatar'),btn=document.getElementById('discordBtn'),tag=document.getElementById('modeTag');
  if(!name)return;
- if(authUser){name.textContent=authUser.user_metadata?.full_name||authUser.user_metadata?.name||authUser.email||'Discord 사용자';meta.textContent='Discord 인증 완료 · RP 계정';avatar.textContent=(name.textContent||'D').slice(0,1);btn.textContent='로그아웃';tag.textContent='AUTHENTICATED';}
- else{name.textContent='시스템 미리보기';meta.textContent='로그인 전 · 로컬 미리보기';avatar.textContent='경';btn.textContent='Discord 로그인';tag.textContent='LOCAL DEMO';}
+ let adminBtn=document.getElementById('applicationsBtn');
+ if(authUser){
+  const admin=authProfile?.role==='admin';
+  name.textContent=admin?'생활안전교통국장':(authProfile?.display_name||authUser.user_metadata?.global_name||authUser.user_metadata?.full_name||authUser.user_metadata?.name||authUser.email||'Discord 사용자');
+  meta.textContent=admin?'생활안전교통국 · 최고 관리자':authProfile?.status==='approved'?((authProfile.rank||'순경')+' · '+(authProfile.department||'미배정')):'가입 신청 대기';
+  avatar.textContent=(name.textContent||'D').slice(0,1);btn.textContent='로그아웃';tag.textContent=admin?'SUPER ADMIN':authProfile?.status==='approved'?'AUTHENTICATED':'PENDING';
+  if(admin&&!adminBtn){adminBtn=document.createElement('button');adminBtn.id='applicationsBtn';adminBtn.className='btn';adminBtn.textContent='가입 신청 관리';adminBtn.onclick=openApplications;document.querySelector('.top-right').insertBefore(adminBtn,tag);}
+  if(!admin&&adminBtn)adminBtn.remove();
+ } else {
+  authProfile=null;name.textContent='시스템 미리보기';meta.textContent='로그인 전 · 로컬 미리보기';avatar.textContent='경';btn.textContent='Discord 로그인';tag.textContent='LOCAL DEMO';if(adminBtn)adminBtn.remove();
+ }
+}
+function showOnboarding(){
+ if(!authUser||!authProfile||authProfile.role==='admin'||authProfile.status==='approved')return;
+ document.getElementById('modalHost').innerHTML='<div class="modal-bg" id="onboardBg"><div class="modal"><div class="eyebrow">MEMBERSHIP APPLICATION</div><h2>경찰 조직 가입 신청</h2><p class="muted">디스코드 인증이 완료되었습니다. 아래 정보를 입력해 가입 신청을 보내세요. 관리자가 승인하기 전까지 인트라넷 기능은 사용할 수 없습니다.</p><form id="onboardForm"><div class="field"><label>로블록스 닉네임</label><input name="roblox_username" required maxlength="40" value="'+esc(authProfile.roblox_username||'')+'" placeholder="Roblox username"></div><div class="field"><label>희망 계급</label><select name="requested_rank">'+['순경','경장','경사','경위','경감','경정','총경','경무관','치안감','치안정감','치안총감'].map(x=>'<option '+(authProfile.requested_rank===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div><div class="field"><label>희망 소속</label><select name="requested_department">'+['생활안전교통국','운영지원담당관','교통안전과','교통안전계','교통기획계','생활안전과','지역치안계','경찰특공대','상황실'].map(x=>'<option '+(authProfile.requested_department===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div><div class="modal-actions"><button class="btn primary" type="submit">가입 신청 제출</button></div></form><p id="onboardStatus" class="muted"></p></div></div>';
+ document.getElementById('onboardForm').onsubmit=async e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));const {data:updated,error}=await supabaseClient.from('profiles').update({...f,application_submitted:true}).eq('id',authUser.id).select('*').single();if(error){toast('신청 저장 실패: '+error.message);return;}authProfile=updated;document.getElementById('onboardStatus').textContent='신청이 제출되었습니다. 관리자 승인 대기 중입니다.';updateAuthUI();toast('가입 신청을 제출했습니다.');};
+}
+async function openApplications(){
+ if(authProfile?.role!=='admin'){toast('관리자 권한이 필요합니다.');return;}
+ const {data:apps,error}=await supabaseClient.from('profiles').select('*').eq('status','pending').order('created_at',{ascending:true});
+ if(error){toast('신청 목록 조회 실패: '+error.message);return;}
+ document.getElementById('modalHost').innerHTML='<div class="modal-bg" id="appsBg"><div class="modal" style="max-height:85vh;overflow:auto"><div class="modal-head"><div><div class="eyebrow">ADMINISTRATION</div><h2>가입 신청 관리</h2></div><button class="x" id="appsClose">×</button></div>'+(apps.length?apps.map(a=>'<article class="panel"><b>'+esc(a.display_name)+'</b><p class="muted">로블록스: '+esc(a.roblox_username||'미입력')+'<br>희망 계급: '+esc(a.requested_rank||'순경')+'<br>희망 소속: '+esc(a.requested_department||'미배정')+'</p><div class="modal-actions"><button class="btn" data-reject="'+a.id+'">반려</button><button class="btn primary" data-approve="'+a.id+'">승인</button></div></article>').join(''):'<div class="empty">대기 중인 가입 신청이 없습니다.</div>')+'</div></div>';
+ document.getElementById('appsClose').onclick=closeModal;
+ document.querySelectorAll('[data-approve]').forEach(b=>b.onclick=()=>reviewApplication(b.dataset.approve,true));
+ document.querySelectorAll('[data-reject]').forEach(b=>b.onclick=()=>reviewApplication(b.dataset.reject,false));
+}
+async function reviewApplication(id,approve){
+ if(authProfile?.role!=='admin'){toast('관리자 권한이 필요합니다.');return;}
+ const {data:app,error:readError}=await supabaseClient.from('profiles').select('*').eq('id',id).single();
+ if(readError){toast('신청 정보를 불러오지 못했습니다.');return;}
+ const patch=approve?{status:'approved',active:true,rank:app.requested_rank||'순경',department:app.requested_department||'미배정',role:'officer'}:{status:'rejected',active:false};
+ const {error}=await supabaseClient.from('profiles').update(patch).eq('id',id);
+ if(error){toast('처리 실패: '+error.message);return;}
+ toast(approve?'가입 신청을 승인했습니다.':'가입 신청을 반려했습니다.');openApplications();
 }
 function openSettings(){
  const cfg=getCloudConfig();
