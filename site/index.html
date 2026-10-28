@@ -97,7 +97,7 @@ function closeModal(){document.getElementById('modalHost').innerHTML=''}
 document.getElementById('mainAction').onclick=()=>{if(page==='attendance'){const me=data.attendance.find(a=>a.name==='시스템 미리보기'&&!a.out);if(me){me.out=new Date().toISOString();log('퇴근 처리','시스템 미리보기')}else{data.attendance.unshift({id:Date.now(),name:'시스템 미리보기',dept:'생활안전과',in:new Date().toISOString(),out:null});log('출근 처리','시스템 미리보기')}save();render();toast(me?'퇴근 처리했습니다.':'출근 처리했습니다.');return}if(page==='audit'){render();return}modal(({personnel:'person',incidents:'incident',notices:'notice',wanted:'wanted',dispatch:'dispatch',leave:'leave',assets:'asset',documents:'document',home:'incident'})[page]||'incident')};
 render();
 
-function getCloudConfig(){try{return JSON.parse(localStorage.getItem('policeRpCloudConfig'))||{}}catch{return {}}}
+function getCloudConfig(){const defaults={url:'https://lnauhbnisreigaqoeabq.supabase.co',key:'sb_publishable_j43MRec1n_BNhmoJoHaI6A_P0Vtuc5O'};try{return {...defaults,...(JSON.parse(localStorage.getItem('policeRpCloudConfig'))||{})}}catch{return defaults}}
 function setupCloud(){
  const cfg=getCloudConfig();
  if(cfg.url&&cfg.key&&window.supabase){
@@ -158,7 +158,8 @@ function updateAuthUI(){
  const gate=document.getElementById('loginGate');
  if(gate)gate.style.display=authUser?'none':'flex';
 
- const name=document.getElementById('userName'),meta=document.getElementById('userMeta'),avatar=document.getElementById('userAvatar'),btn=document.getElementById('discordBtn'),tag=document.getElementById('modeTag');
+ const name=document.getElementById('userName'),meta=document.getElementById('userMeta'),avatar=document.getElementById('userAvatar'),btn=document.getElementById('discordBtn'),tag=document.getElementById('modeTag'),settingsBtn=document.getElementById('settingsBtn');
+ if(settingsBtn)settingsBtn.style.display=authUser&&authProfile?.role==='admin'?'':'none';
  if(!name)return;
  let adminBtn=document.getElementById('applicationsBtn');
  if(authUser){
