@@ -81,6 +81,14 @@ as $$
   );
 $$;
 
+drop policy if exists "profile read own or managers" on public.profiles;
+create policy "profile read own or approved managers"
+  on public.profiles for select to authenticated
+  using (
+    id=auth.uid()
+    or (public.can_access_intranet() and public.is_staff_manager())
+  );
+
 create or replace function public.can_insert_shared_module(p_module text)
 returns boolean
 language sql
