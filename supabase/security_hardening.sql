@@ -252,4 +252,15 @@ create policy "documents manage by role" on public.documents
   using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','hr_manager'))
   with check (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','hr_manager'));
 
+-- A user-created fallback profile must never be able to self-approve.
+drop policy if exists "profile self insert officer" on public.profiles;
+create policy "profile self insert officer"
+  on public.profiles for insert to authenticated
+  with check (
+    id=auth.uid()
+    and role='officer'
+    and status='pending'
+    and active=true
+  );
+
 commit;
