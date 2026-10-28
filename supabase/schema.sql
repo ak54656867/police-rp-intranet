@@ -234,14 +234,13 @@ create policy "profile self update application"
   using (
     id=auth.uid()
     and role='officer'
-    and (status='pending' or status='rejected')
-    and (active=true or status='rejected')
+    and status in ('pending','rejected')
   )
   with check (
     id=auth.uid()
     and role='officer'
     and status='pending'
-    and active=true
+    and active in (true,false)
   );
 
 -- Align the database's allowed modules with the frontend's actual shared data list.
