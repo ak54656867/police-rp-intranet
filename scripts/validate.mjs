@@ -52,6 +52,18 @@ check('shared-record role policies', () => {
     if (!sql.includes('create policy "' + name + '"')) throw new Error('Manager-only delete policy missing: ' + name);
   }
   if (!sql.includes("status='pending'")) throw new Error('Pending approval gate missing');
+  for (const name of ['incident manage approved', 'wanted manage approved', 'dispatch manage approved']) {
+    if (sql.includes('create policy "' + name + '"')) throw new Error('Permissive legacy policy remains: ' + name);
+  }
+  if (!sql.includes('function public.protect_self_profile_update()')) throw new Error('Self-profile privilege protection missing');
+  if (!sql.includes('Make this migration safely re-runnable')) throw new Error('Policy cleanup/idempotency guard missing');
+});
+check('realtime synchronization regression guards', () => {
+  const html = read('site/index.html');
+  if (!html.includes('next!==lastSyncedSnapshot')) throw new Error('Cloud retry does not compare against last synced snapshot');
+  if (!html.includes('lastSyncedSnapshot=JSON.stringify(synced)')) throw new Error('Realtime events do not update the remote snapshot safely');
+  if (!html.includes('cloudLoadPromise')) throw new Error('Concurrent shared-data loads are not deduplicated');
+  if (!html.includes('authSubscription.unsubscribe()')) throw new Error('Old auth listeners are not cleaned up');
 });
 
 const failed = checks.filter((x) => !x.ok);
