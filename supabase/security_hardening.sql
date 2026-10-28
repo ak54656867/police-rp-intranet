@@ -1,5 +1,5 @@
 -- Security hardening for the existing Police RP Intranet Supabase project.
--- Run this file once in Supabase SQL Editor after reviewing it.
+-- Re-runnable migration for an existing Supabase project; review before applying.
 begin;
 
 -- Make this migration safely re-runnable by removing its own policies first.
