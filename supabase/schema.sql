@@ -322,6 +322,7 @@ create policy "shared records insert by role"
     public.can_access_intranet()
     and updated_by = auth.uid()
     and public.can_insert_shared_module(module)
+    and (module <> 'audit' or payload->>'userId'=auth.uid()::text)
   );
 
 create policy "shared records update by role"
