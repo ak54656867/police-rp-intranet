@@ -16,12 +16,42 @@ https://ak54656867.github.io/police-rp-intranet/
 4. Discord Developer Portal에서 OAuth2 애플리케이션을 만들고 Client ID와 Client Secret을 Supabase의 Discord provider 설정에 입력합니다. Secret은 웹사이트 코드나 GitHub 저장소에 넣지 마세요.
 5. Supabase **Authentication → URL Configuration**에서 Site URL을 `https://ak54656867.github.io`로 설정하고 Redirect URLs에 `https://ak54656867.github.io/police-rp-intranet/`를 추가합니다. Discord Developer Portal의 OAuth2 Redirect URL에는 Supabase가 표시하는 callback URL을 입력합니다(일반적으로 `https://<project-ref>.supabase.co/auth/v1/callback`).
 6. 웹사이트에서 **연동 설정**을 누르고 Project URL과 공개용 anon/publishable key를 저장합니다. `service_role` 키는 절대 입력하지 마세요.
-7. **Discord 로그인**을 누릅니다. 인증에 성공하면 공유 기록을 불러오며, 기록 추가·변경·삭제는 Supabase에 저장되고 다른 로그인 이용자에게 Realtime으로 전달됩니다.
+7. 먼저 신뢰할 수 있는 최고 관리자 계정을 준비하고 로그인합니다. 공유 데이터가 비어 있을 때는 최고 관리자만 초기 데이터를 등록할 수 있습니다. 이후 승인된 구성원이 Discord 로그인하면 공유 기록을 불러오며, 변경 사항은 권한 정책에 따라 Supabase에 저장되고 Realtime으로 전달됩니다.
+
+## 최고 관리자 계정 초기 설정
+
+가입 프로필의 raw_user_meta_data는 사용자 편집이 가능하므로, 이 값만 보고 최고 관리자 권한을 자동 부여하면 안 됩니다. 현재 SQL은 신규 계정을 기본 경찰관·승인 대기로 생성합니다.
+
+1. Discord로 최고 관리자 계정에 로그인해 프로필을 생성합니다.
+2. Supabase SQL Editor에서 다음 조회를 실행하고, auth.identities의 Discord 제공자 데이터에서 Discord ID를 직접 확인합니다.
+
+```sql
+select u.id as auth_user_uuid, i.provider, i.identity_data
+from auth.users u
+join auth.identities i on i.user_id = u.id
+where i.provider = 'discord';
+```
+
+3. 확인된 UUID를 사용해 최고 관리자 프로필을 설정합니다.
+
+```sql
+update public.profiles
+set display_name = '생활안전교통국장',
+    role = 'admin',
+    department = '생활안전교통국',
+    rank = '생활안전교통국장',
+    active = true,
+    status = 'approved',
+    application_submitted = true
+where id = '<검증한 auth_user_uuid>';
+```
+
+기존 프로젝트에서 과거 onboarding_admin.sql을 실행했다면, 관리자 센터의 계정 목록에서 admin 권한 계정이 실제로 신뢰하는 Discord 계정인지 별도로 확인하세요. SQL 파일 수정은 이미 데이터베이스에 반영된 기존 권한을 자동으로 정리하지 않습니다.
 
 ## 동작 방식 및 주의사항
 
 - 로그인 전 데이터는 현재 브라우저의 `localStorage`에 저장됩니다.
-- 최초로 연결한 로그인 브라우저에 로컬 기록이 있고 클라우드가 비어 있으면 해당 기록을 공유 공간에 초기 등록합니다. 이후에는 클라우드 데이터를 기준으로 표시합니다.
+- 공유 데이터가 비어 있을 때 일반 계정의 브라우저 로컬 기록을 자동 업로드하지 않습니다. 최고 관리자가 최초 초기화를 수행해야 다른 구성원의 로컬 기록이 실수로 공유 데이터에 섞이지 않습니다.
 - 공유 데이터는 승인된 RP 구성원끼리 공유됩니다. `supabase/security_hardening.sql`은 승인 여부와 역할별 읽기·추가·수정·삭제 권한을 분리하며, 감사 로그와 조직 설정은 일반 계정이 수정·삭제하지 못하도록 제한합니다. 정책은 실제 Supabase 프로젝트에 마이그레이션을 실행해야 적용됩니다.
 - Supabase 프로젝트 URL/key와 Discord OAuth 설정이 없으면 이 대화만으로 외부 서비스 연결을 실제 검증할 수 없습니다.
 - 가상 역할극 용도로만 사용하세요. 실제 개인정보, 실제 사건 정보, 민감한 경찰 정보를 입력하지 마세요.
