@@ -17,7 +17,7 @@ const cloudModules=['personnel','attendance','incidents','wanted','dispatch','le
 function save(){
  const next=JSON.stringify(data);
  try{localStorage.setItem('policeRpData',next);}catch(e){console.error('Local save failed',e);toast('브라우저 저장 공간이 부족하거나 저장이 차단되었습니다. 클라우드 저장 상태를 확인하세요.');}
- if(!cloudApplying&&cloudReady&&supabaseClient&&authUser&&next!==lastSavedSnapshot){
+ if(!cloudApplying&&cloudReady&&supabaseClient&&authUser&&next!==lastSyncedSnapshot){
   const target=JSON.parse(next);
   syncQueue=syncQueue.then(async()=>{
    const previous=JSON.parse(lastSyncedSnapshot||'{}');
@@ -110,8 +110,21 @@ async function loadSharedData(){
      if(payload.eventType==='DELETE'){if(idx>=0)arr.splice(idx,1);}
      else if(row.payload){if(idx>=0)arr[idx]=row.payload;else arr.unshift(row.payload);}
     }
-    saveLocalOnly();lastSavedSnapshot=JSON.stringify(data);lastSyncedSnapshot=lastSavedSnapshot;render();
+    saveLocalOnly();lastSavedSnapshot=JSON.stringify(data);
+    const synced=JSON.parse(lastSyncedSnapshot||'{}');
+    if(listModules.includes(row.module)){
+     if(payload.eventType==='DELETE'){if(row.record_id==='__list__')synced[row.module]=[];}
+     else if(row.record_id==='__list__'&&Array.isArray(row.payload))synced[row.module]=row.payload;
+     else if(typeof row.payload==='string'){if(!Array.isArray(synced[row.module]))synced[row.module]=[];if(!synced[row.module].includes(row.payload))synced[row.module].push(row.payload);}
+    }else{
+     const syncedRows=Array.isArray(synced[row.module])?synced[row.module]:(synced[row.module]=[]);
+     const syncedIndex=syncedRows.findIndex(x=>String(x.id)===String(row.record_id));
+     if(payload.eventType==='DELETE'){if(syncedIndex>=0)syncedRows.splice(syncedIndex,1);}
+     else if(row.payload){if(syncedIndex>=0)syncedRows[syncedIndex]=row.payload;else syncedRows.unshift(row.payload);}
+    }
+    lastSyncedSnapshot=JSON.stringify(synced);render();
    }finally{cloudApplying=false;}
+   if(cloudReady&&JSON.stringify(data)!==lastSyncedSnapshot)save();
   }).subscribe();
  render();updateAuthUI();
  })();
