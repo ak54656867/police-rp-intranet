@@ -229,6 +229,32 @@ create trigger reopen_rejected_application_trigger
   for each row execute function public.reopen_rejected_application();
 
 drop policy if exists "applicant update own pending profile" on public.profiles;
+-- Prevent applicants from changing role, approval, rank, department, or permissions
+-- through the broad row-level UPDATE permission on their own profile.
+create or replace function public.protect_self_profile_update()
+returns trigger
+language plpgsql
+set search_path = public
+as $
+begin
+  if auth.uid() = old.id and old.role <> 'admin' then
+    new.id := old.id;
+    new.role := old.role;
+    new.status := old.status;
+    new.active := old.active;
+    new.rank := old.rank;
+    new.department := old.department;
+    new.permissions := old.permissions;
+    new.created_at := old.created_at;
+  end if;
+  return new;
+end;
+$;
+drop trigger if exists profiles_protect_self_update on public.profiles;
+create trigger profiles_protect_self_update
+  before update on public.profiles
+  for each row execute function public.protect_self_profile_update();
+
 drop policy if exists "profile self update application" on public.profiles;
 create policy "profile self update application"
   on public.profiles for update to authenticated
