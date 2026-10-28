@@ -166,18 +166,39 @@ create policy "shared records insert by role"
   on public.shared_records for insert to authenticated
   with check (
     public.can_access_intranet()
-    and updated_by = auth.uid()
+    and updated_by=auth.uid()
     and public.can_insert_shared_module(module)
     and (module <> 'audit' or payload->>'userId'=auth.uid()::text)
+    and (
+      module not in ('attendance','leave')
+      or public.current_role() in ('admin','chief','department_head','hr_manager')
+      or (module='attendance' and payload->>'userId'=auth.uid()::text and payload->>'out' is null)
+      or (module='leave' and payload->>'userId'=auth.uid()::text and payload->>'status'='申請')
+    )
   );
 
 create policy "shared records update by role"
   on public.shared_records for update to authenticated
-  using (public.can_access_intranet() and public.can_update_shared_module(module))
+  using (
+    public.can_access_intranet()
+    and public.can_update_shared_module(module)
+    and (
+      module not in ('attendance','leave')
+      or public.current_role() in ('admin','chief','department_head','hr_manager')
+      or (module='attendance' and payload->>'userId'=auth.uid()::text)
+      or (module='leave' and payload->>'userId'=auth.uid()::text and payload->>'status'='申請')
+    )
+  )
   with check (
     public.can_access_intranet()
-    and updated_by = auth.uid()
+    and updated_by=auth.uid()
     and public.can_update_shared_module(module)
+    and (
+      module not in ('attendance','leave')
+      or public.current_role() in ('admin','chief','department_head','hr_manager')
+      or (module='attendance' and payload->>'userId'=auth.uid()::text)
+      or (module='leave' and payload->>'userId'=auth.uid()::text and payload->>'status'='申請')
+    )
   );
 
 create policy "shared records delete by role"
@@ -242,7 +263,7 @@ create policy "leave read approved own or managers" on public.leave_requests
 drop policy if exists "leave create own" on public.leave_requests;
 create policy "leave create approved own" on public.leave_requests
   for insert to authenticated
-  with check (public.can_access_intranet() and created_by=auth.uid());
+  with check (public.can_access_intranet() and created_by=auth.uid() and status='申請' and reviewer_id is null);
 drop policy if exists "leave review" on public.leave_requests;
 create policy "leave review approved" on public.leave_requests
   for update to authenticated
