@@ -46,6 +46,11 @@ check('shared-record role policies', () => {
     if (!sql.includes('function public.' + name)) throw new Error('Missing policy function: ' + name);
   }
   if (!sql.includes("payload->>'userId'=auth.uid()::text")) throw new Error('Audit actor binding missing');
+  if (!sql.includes("module='attendance' and payload->>'userId'=auth.uid()::text and payload->>'out' is null")) throw new Error('Attendance ownership gate missing');
+  if (!sql.includes("module='leave' and payload->>'userId'=auth.uid()::text and payload->>'status'='신청'")) throw new Error('Leave approval gate missing');
+  for (const name of ['incident delete managers', 'wanted delete managers', 'dispatch delete managers']) {
+    if (!sql.includes('create policy "' + name + '"')) throw new Error('Manager-only delete policy missing: ' + name);
+  }
   if (!sql.includes("status='pending'")) throw new Error('Pending approval gate missing');
 });
 
