@@ -130,7 +130,7 @@ async function loadSharedData(){
  })();
  try{return await cloudLoadPromise;}finally{cloudLoadPromise=null;}
 }
-function saveLocalOnly(){localStorage.setItem('policeRpData',JSON.stringify(data));}
+function saveLocalOnly(){try{localStorage.setItem('policeRpData',JSON.stringify(data));}catch(e){console.error('Local save failed',e);toast('브라우저 저장 공간이 부족하거나 저장이 차단되었습니다. 클라우드 데이터는 별도로 확인하세요.');}}
 function esc(s=''){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function date(v){return v?new Date(v).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'}
 function pill(s){let c=s==='긴급'?'red':s==='높음'?'orange':s==='조사 중'?'blue':s==='종결'?'green':'gray';return '<span class="pill '+c+'">'+esc(s)+'</span>'}
