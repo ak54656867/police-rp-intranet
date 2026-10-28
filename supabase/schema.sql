@@ -355,7 +355,7 @@ create policy "shared records insert by role"
       module not in ('attendance','leave')
       or public.current_role() in ('admin','chief','department_head','hr_manager')
       or (module='attendance' and payload->>'userId'=auth.uid()::text and payload->>'out' is null)
-      or (module='leave' and payload->>'userId'=auth.uid()::text and payload->>'status'='申請')
+      or (module='leave' and payload->>'userId'=auth.uid()::text and payload->>'status'='신청')
     )
   );
 
@@ -368,7 +368,7 @@ create policy "shared records update by role"
       module not in ('attendance','leave')
       or public.current_role() in ('admin','chief','department_head','hr_manager')
       or (module='attendance' and payload->>'userId'=auth.uid()::text)
-      or (module='leave' and payload->>'userId'=auth.uid()::text and payload->>'status'='申請')
+      or (module='leave' and payload->>'userId'=auth.uid()::text and payload->>'status'='신청')
     )
   )
   with check (
@@ -379,7 +379,7 @@ create policy "shared records update by role"
       module not in ('attendance','leave')
       or public.current_role() in ('admin','chief','department_head','hr_manager')
       or (module='attendance' and payload->>'userId'=auth.uid()::text)
-      or (module='leave' and payload->>'userId'=auth.uid()::text and payload->>'status'='申請')
+      or (module='leave' and payload->>'userId'=auth.uid()::text and payload->>'status'='신청')
     )
   );
 
@@ -485,7 +485,7 @@ create policy "leave read approved own or managers" on public.leave_requests
 drop policy if exists "leave create own" on public.leave_requests;
 create policy "leave create approved own" on public.leave_requests
   for insert to authenticated
-  with check (public.can_access_intranet() and created_by=auth.uid() and status='申請' and reviewer_id is null);
+  with check (public.can_access_intranet() and created_by=auth.uid() and status='신청' and reviewer_id is null);
 drop policy if exists "leave review" on public.leave_requests;
 create policy "leave review approved" on public.leave_requests
   for update to authenticated
