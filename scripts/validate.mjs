@@ -12,7 +12,7 @@ function check(name, fn) {
 
 check('site inline JavaScript syntax', () => {
   const html = read('site/index.html');
-  const scripts = [...html.matchAll(/<script>([\\s\\S]*?)<\\/script>/g)].map((m) => m[1]);
+  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
   if (!scripts.length) throw new Error('No inline script found');
   scripts.forEach((script) => new vm.Script(script, { filename: 'site/index.html:inline-script' }));
 });
@@ -29,13 +29,13 @@ check('desktop package manifest', () => {
 });
 check('pinned Supabase client', () => {
   const html = read('site/index.html');
-  if (!/supabase-js@\\d+\\.\\d+\\.\\d+/.test(html)) throw new Error('Supabase CDN dependency is not pinned');
+  if (!/supabase-js@\d+\.\d+\.\d+/.test(html)) throw new Error('Supabase CDN dependency is not pinned');
 });
 check('no metadata-based admin promotion', () => {
   const files = ['supabase/schema.sql', 'supabase/security_hardening.sql', 'supabase/onboarding_admin.sql'];
   for (const file of files) {
     const sql = read(file);
-    if (/if\\s+discord_id\\s*=\\s*'285388357272600578'|where\\s+coalesce\\(u\\.raw_user_meta_data->>'provider_id'/i.test(sql)) {
+    if (/if\s+discord_id\s*=\s*'285388357272600578'|where\s+coalesce\(u\.raw_user_meta_data->>'provider_id'/i.test(sql)) {
       throw new Error(file + ' contains metadata-based admin promotion');
     }
   }
@@ -51,6 +51,6 @@ check('shared-record role policies', () => {
 
 const failed = checks.filter((x) => !x.ok);
 for (const item of checks) {
-  process.stdout.write((item.ok ? 'PASS ' : 'FAIL ') + item.name + (item.error ? ': ' + item.error : '') + '\\n');
+  process.stdout.write((item.ok ? 'PASS ' : 'FAIL ') + item.name + (item.error ? ': ' + item.error : '') + '\n');
 }
 if (failed.length) process.exitCode = 1;
