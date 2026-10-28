@@ -228,6 +228,7 @@ create trigger reopen_rejected_application_trigger
   before update on public.profiles
   for each row execute function public.reopen_rejected_application();
 
+drop policy if exists "applicant update own pending profile" on public.profiles;
 drop policy if exists "profile self update application" on public.profiles;
 create policy "profile self update application"
   on public.profiles for update to authenticated
