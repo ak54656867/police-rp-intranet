@@ -102,4 +102,114 @@ create policy "shared records delete by role"
   on public.shared_records for delete to authenticated
   using (public.can_access_intranet() and public.can_write_shared_module(module));
 
+
+-- Apply the same approval gate to the legacy normalized tables as well.
+drop policy if exists "personnel read" on public.personnel;
+create policy "personnel read approved" on public.personnel
+  for select to authenticated using (public.can_access_intranet());
+drop policy if exists "personnel manage" on public.personnel;
+create policy "personnel manage by role" on public.personnel
+  for all to authenticated
+  using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','hr_manager'))
+  with check (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','hr_manager'));
+
+drop policy if exists "attendance read" on public.attendance;
+create policy "attendance read approved" on public.attendance
+  for select to authenticated using (public.can_access_intranet());
+drop policy if exists "attendance insert" on public.attendance;
+create policy "attendance insert approved" on public.attendance
+  for insert to authenticated
+  with check (public.can_access_intranet() and (user_id=auth.uid() or public.current_role() in ('admin','chief','department_head','hr_manager')));
+drop policy if exists "attendance update" on public.attendance;
+create policy "attendance update approved" on public.attendance
+  for update to authenticated
+  using (public.can_access_intranet() and (user_id=auth.uid() or public.current_role() in ('admin','chief','department_head','hr_manager')))
+  with check (public.can_access_intranet() and (user_id=auth.uid() or public.current_role() in ('admin','chief','department_head','hr_manager')));
+
+drop policy if exists "incident read" on public.incidents;
+create policy "incident read approved" on public.incidents
+  for select to authenticated using (public.can_access_intranet());
+drop policy if exists "incident manage" on public.incidents;
+create policy "incident manage approved" on public.incidents
+  for all to authenticated
+  using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','dispatcher','officer'))
+  with check (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','dispatcher','officer'));
+
+drop policy if exists "wanted read" on public.wanted_persons;
+create policy "wanted read approved" on public.wanted_persons
+  for select to authenticated using (public.can_access_intranet());
+drop policy if exists "wanted manage" on public.wanted_persons;
+create policy "wanted manage approved" on public.wanted_persons
+  for all to authenticated
+  using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','officer'))
+  with check (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','officer'));
+
+drop policy if exists "dispatch read" on public.dispatches;
+create policy "dispatch read approved" on public.dispatches
+  for select to authenticated using (public.can_access_intranet());
+drop policy if exists "dispatch manage" on public.dispatches;
+create policy "dispatch manage approved" on public.dispatches
+  for all to authenticated
+  using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','dispatcher','officer'))
+  with check (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','dispatcher','officer'));
+
+drop policy if exists "leave read own or managers" on public.leave_requests;
+create policy "leave read approved own or managers" on public.leave_requests
+  for select to authenticated
+  using (public.can_access_intranet() and (created_by=auth.uid() or public.current_role() in ('admin','chief','department_head','hr_manager')));
+drop policy if exists "leave create own" on public.leave_requests;
+create policy "leave create approved own" on public.leave_requests
+  for insert to authenticated
+  with check (public.can_access_intranet() and created_by=auth.uid());
+drop policy if exists "leave review" on public.leave_requests;
+create policy "leave review approved" on public.leave_requests
+  for update to authenticated
+  using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','hr_manager'))
+  with check (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','hr_manager'));
+
+drop policy if exists "assets read" on public.assets;
+create policy "assets read approved" on public.assets
+  for select to authenticated using (public.can_access_intranet());
+drop policy if exists "assets manage" on public.assets;
+create policy "assets manage by role" on public.assets
+  for all to authenticated
+  using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','hr_manager'))
+  with check (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','hr_manager'));
+
+drop policy if exists "notices read" on public.notices;
+create policy "notices read approved" on public.notices
+  for select to authenticated using (public.can_access_intranet());
+drop policy if exists "notices manage" on public.notices;
+create policy "notices manage by role" on public.notices
+  for all to authenticated
+  using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','hr_manager'))
+  with check (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','hr_manager'));
+
+drop policy if exists "audit read managers" on public.audit_logs;
+create policy "audit read approved managers" on public.audit_logs
+  for select to authenticated
+  using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','hr_manager'));
+drop policy if exists "audit insert staff" on public.audit_logs;
+create policy "audit insert approved staff" on public.audit_logs
+  for insert to authenticated
+  with check (public.can_access_intranet() and actor_id=auth.uid());
+
+drop policy if exists "org read" on public.org_units;
+create policy "org read approved" on public.org_units
+  for select to authenticated using (public.can_access_intranet());
+drop policy if exists "org manage" on public.org_units;
+create policy "org manage by role" on public.org_units
+  for all to authenticated
+  using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','hr_manager'))
+  with check (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','hr_manager'));
+
+drop policy if exists "documents read" on public.documents;
+create policy "documents read approved" on public.documents
+  for select to authenticated using (public.can_access_intranet());
+drop policy if exists "documents manage" on public.documents;
+create policy "documents manage by role" on public.documents
+  for all to authenticated
+  using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','hr_manager'))
+  with check (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','hr_manager'));
+
 commit;
