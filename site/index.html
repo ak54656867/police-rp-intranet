@@ -217,7 +217,7 @@ async function startDiscordLogin(){
  if(authUser&&supabaseClient){if(status)status.textContent='이미 로그인되어 있습니다.';return;}
  if(!supabaseClient){if(status)status.textContent='연동 설정을 확인할 수 없습니다. 사이트 연동 설정에서 Supabase URL과 공개 키를 저장해 주세요.';openSettings();return;}
  if(status)status.textContent='Discord 로그인 페이지로 이동 중…';
- const {error}=await supabaseClient.auth.signInWithOAuth({provider:'discord',options:{redirectTo:window.location.href}});
+ const cleanRedirectUrl=window.location.origin+window.location.pathname;const {error}=await supabaseClient.auth.signInWithOAuth({provider:'discord',options:{redirectTo:cleanRedirectUrl}});
  if(error){if(status)status.textContent='로그인 오류: '+error.message;toast('Discord 로그인 오류: '+error.message);}
 }
 document.getElementById('gateDiscordBtn').onclick=startDiscordLogin;
@@ -227,5 +227,19 @@ document.getElementById('discordBtn').onclick=async()=>{
  await startDiscordLogin();
 };
 setupCloud();
+// OAuth callback 오류를 감지해 오류가 붙은 URL을 정리합니다.
+try{
+ const params=new URLSearchParams(window.location.search);
+ const oauthError=params.get('error');
+ if(oauthError){
+  const detail=params.get('error_description')||'';
+  const message=detail.includes('Unable to exchange external code')
+   ?'Discord 인증 코드 교환에 실패했습니다. Supabase의 Discord Client ID/Secret 설정을 확인해야 합니다.'
+   :'Discord 로그인에 실패했습니다: '+oauthError;
+  const status=document.getElementById('gateStatus');
+  if(status)status.textContent=message;
+  window.history.replaceState({},document.title,window.location.origin+window.location.pathname);
+ }
+}catch(e){console.warn('OAuth 오류 처리 실패',e);}
 
 </script></body></html>
