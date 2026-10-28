@@ -6,7 +6,68 @@
 <script>
 const defaults={wanted:[],dispatch:[],leave:[],assets:[],documents:[],personnel:[{id:1,name:'김도윤',rank:'경정',dept:'생활안전과',role:'부서 관리자'},{id:2,name:'박서준',rank:'경위',dept:'교통안전과',role:'경찰관'},{id:3,name:'이하준',rank:'경사',dept:'지역치안계',role:'경찰관'},{id:4,name:'최유진',rank:'경장',dept:'교통관리계',role:'경찰관'}],attendance:[],incidents:[{id:1,no:'RP-2026-0108',title:'중앙역 인근 교통사고',owner:'박서준',status:'조사 중',priority:'보통',date:new Date().toISOString()},{id:2,no:'RP-2026-0107',title:'상점 절도 신고',owner:'이하준',status:'접수',priority:'높음',date:new Date(Date.now()-3600000).toISOString()}],notices:[{id:1,title:'경찰청 근무 수칙 및 복무 기준 안내',category:'긴급',author:'경찰청장',date:new Date().toISOString(),body:'RP 내 근무 수칙을 확인하고, 모든 업무 기록은 사실에 근거하여 작성해 주시기 바랍니다.'},{id:2,title:'정기 인사발령 공고',category:'인사',author:'인사과',date:new Date(Date.now()-86400000).toISOString(),body:'정기 인사발령 공고입니다. 세부 사항은 인사 담당 부서에 문의해 주세요.'},{id:3,title:'상황실 무전 채널 운영 안내',category:'지시',author:'상황실',date:new Date(Date.now()-172800000).toISOString(),body:'상황실 운영 시 지정된 RP 무전 채널을 이용해 주세요.'}],audit:[]};
 let data;try{data={...defaults,...(JSON.parse(localStorage.getItem('policeRpData'))||{})}}catch{data={...defaults}}let page='home',query='',modalType='',supabaseClient=null,authUser=null;
-function save(){localStorage.setItem('policeRpData',JSON.stringify(data))}
+let cloudReady=false,cloudApplying=false,cloudChannel=null,lastSavedSnapshot=JSON.stringify(data),syncQueue=Promise.resolve();
+const cloudModules=['personnel','attendance','incidents','wanted','dispatch','leave','assets','notices','documents','audit'];
+function save(){
+ localStorage.setItem('policeRpData',JSON.stringify(data));
+ const next=JSON.stringify(data);
+ if(!cloudApplying&&cloudReady&&supabaseClient&&authUser&&next!==lastSavedSnapshot){
+  const previous=JSON.parse(lastSavedSnapshot||'{}');
+  syncQueue=syncQueue.then(()=>syncDiff(previous,data)).catch(e=>{console.error('Cloud sync failed',e);toast('클라우드 저장 실패: '+(e.message||'연결을 확인하세요.'))});
+ }
+ lastSavedSnapshot=next;
+}
+async function syncDiff(previous,current){
+ if(!supabaseClient||!authUser||!cloudReady)return;
+ for(const module of cloudModules){
+  const before=Array.isArray(previous[module])?previous[module]:[],after=Array.isArray(current[module])?current[module]:[];
+  const beforeMap=new Map(before.map(x=>[String(x.id),x])),afterMap=new Map(after.map(x=>[String(x.id),x]));
+  for(const [id,item] of afterMap){
+   if(JSON.stringify(beforeMap.get(id))===JSON.stringify(item))continue;
+   const {error}=await supabaseClient.from('shared_records').upsert({module,record_id:id,payload:item,updated_by:authUser.id},{onConflict:'module,record_id'});
+   if(error)throw error;
+  }
+  for(const [id] of beforeMap){if(!afterMap.has(id)){const {error}=await supabaseClient.from('shared_records').delete().eq('module',module).eq('record_id',id);if(error)throw error;}}
+ }
+}
+async function loadSharedData(){
+ if(!supabaseClient||!authUser)return;
+ cloudReady=false;
+ const {data:rows,error}=await supabaseClient.from('shared_records').select('module,record_id,payload');
+ if(error)throw error;
+ cloudApplying=true;
+ try{
+  if(rows&&rows.length){
+   for(const module of cloudModules)data[module]=[];
+   for(const row of rows){if(cloudModules.includes(row.module)&&row.payload)data[row.module].push(row.payload);}
+   for(const module of cloudModules)data[module].sort((a,b)=>String(b.date||b.created_at||b.in||'').localeCompare(String(a.date||a.created_at||a.in||'')));
+   saveLocalOnly();
+  }else{
+   // First connected member seeds an empty workspace from this browser's current records.
+   const initial={};for(const module of cloudModules)initial[module]=Array.isArray(data[module])?data[module]:[];
+   for(const module of cloudModules){for(const item of initial[module]){const {error:writeError}=await supabaseClient.from('shared_records').upsert({module,record_id:String(item.id??crypto.randomUUID()),payload:item,updated_by:authUser.id},{onConflict:'module,record_id'});if(writeError)throw writeError;}}
+  }
+  lastSavedSnapshot=JSON.stringify(data);
+ }finally{cloudApplying=false;}
+ cloudReady=true;
+ saveLocalOnly();
+ if(cloudChannel){await supabaseClient.removeChannel(cloudChannel);cloudChannel=null;}
+ cloudChannel=supabaseClient.channel('police-rp-shared-records')
+  .on('postgres_changes',{event:'*',schema:'public',table:'shared_records'},payload=>{
+   if(cloudApplying)return;
+   const row=payload.new||payload.old;if(!row||!cloudModules.includes(row.module))return;
+   cloudApplying=true;
+   try{
+    const arr=data[row.module]||(data[row.module]=[]);
+    const idx=arr.findIndex(x=>String(x.id)===String(row.record_id));
+    if(payload.eventType==='DELETE'){if(idx>=0)arr.splice(idx,1);}
+    else if(row.payload){if(idx>=0)arr[idx]=row.payload;else arr.unshift(row.payload);}
+    saveLocalOnly();lastSavedSnapshot=JSON.stringify(data);render();
+   }finally{cloudApplying=false;}
+  }).subscribe();
+ render();updateAuthUI();
+}
+function saveLocalOnly(){localStorage.setItem('policeRpData',JSON.stringify(data));}
 function esc(s=''){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function date(v){return v?new Date(v).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'—'}
 function pill(s){let c=s==='긴급'?'red':s==='높음'?'orange':s==='조사 중'?'blue':s==='종결'?'green':'gray';return '<span class="pill '+c+'">'+esc(s)+'</span>'}
@@ -39,8 +100,29 @@ render();
 function getCloudConfig(){try{return JSON.parse(localStorage.getItem('policeRpCloudConfig'))||{}}catch{return {}}}
 function setupCloud(){
  const cfg=getCloudConfig();
- if(cfg.url&&cfg.key&&window.supabase){try{supabaseClient=window.supabase.createClient(cfg.url,cfg.key);supabaseClient.auth.getSession().then(({data})=>{authUser=data.session?.user||null;updateAuthUI()});supabaseClient.auth.onAuthStateChange((_event,session)=>{authUser=session?.user||null;updateAuthUI()});}catch(e){console.error(e);}}
+ if(cfg.url&&cfg.key&&window.supabase){
+  try{
+   supabaseClient=window.supabase.createClient(cfg.url,cfg.key);
+   supabaseClient.auth.getSession().then(async({data,error})=>{
+    if(error){toast('세션 확인 실패: '+error.message);return;}
+    authUser=data.session?.user||null;updateAuthUI();
+    if(authUser){try{await ensureProfile();await loadSharedData();toast('공유 데이터베이스 연결 완료');}catch(e){cloudReady=false;console.error(e);toast('데이터베이스 연결 실패: '+(e.message||'SQL 설정을 확인하세요.'));}}
+   });
+   supabaseClient.auth.onAuthStateChange((_event,session)=>{
+    authUser=session?.user||null;updateAuthUI();
+    if(authUser){setTimeout(async()=>{try{await ensureProfile();await loadSharedData();}catch(e){console.error(e);toast('클라우드 동기화 오류: '+(e.message||''));}},0);}
+    else{cloudReady=false;if(cloudChannel){supabaseClient.removeChannel(cloudChannel);cloudChannel=null;}updateAuthUI();}
+   });
+  }catch(e){console.error(e);toast('Supabase 초기화 실패: '+e.message);}
+ }
  updateAuthUI();
+}
+async function ensureProfile(){
+ if(!supabaseClient||!authUser)return;
+ const meta=authUser.user_metadata||{};
+ const display=meta.full_name||meta.name||meta.global_name||authUser.email||'Discord 사용자';
+ const {error}=await supabaseClient.from('profiles').upsert({id:authUser.id,display_name:display},{onConflict:'id',ignoreDuplicates:true});
+ if(error)throw error;
 }
 function updateAuthUI(){
  const name=document.getElementById('userName'),meta=document.getElementById('userMeta'),avatar=document.getElementById('userAvatar'),btn=document.getElementById('discordBtn'),tag=document.getElementById('modeTag');
@@ -50,11 +132,11 @@ function updateAuthUI(){
 }
 function openSettings(){
  const cfg=getCloudConfig();
- document.getElementById('modalHost').innerHTML='<div class="modal-bg" id="settingsBg"><div class="modal"><div class="modal-head"><div><div class="eyebrow">INTEGRATIONS</div><h2>Discord · 데이터베이스 연동</h2></div><button class="x" id="settingsClose">×</button></div><form id="settingsForm"><div class="field"><label>Supabase Project URL</label><input name="url" placeholder="https://xxxx.supabase.co" value="'+esc(cfg.url||'')+'"></div><div class="field"><label>Supabase anon / publishable key</label><input name="key" placeholder="sb_publishable_… 또는 공개 anon 키" value="'+esc(cfg.key||'')+'"></div><p class="muted" style="font-size:12px">Discord 로그인은 Supabase Authentication에서 Discord Provider를 활성화하고 Client ID/Secret 및 Redirect URL을 설정해야 작동합니다. 여기에 service_role 키를 절대 입력하지 마세요. 이 화면은 로그인 연동 설정만 저장하며, 기록의 클라우드 동기화는 별도 구현이 필요합니다.</p><div class="modal-actions"><button type="button" class="btn" id="settingsCancel">취소</button><button type="submit" class="btn primary">설정 저장 및 연결</button></div></form></div></div>';
+ document.getElementById('modalHost').innerHTML='<div class="modal-bg" id="settingsBg"><div class="modal"><div class="modal-head"><div><div class="eyebrow">INTEGRATIONS</div><h2>Discord · 데이터베이스 연동</h2></div><button class="x" id="settingsClose">×</button></div><form id="settingsForm"><div class="field"><label>Supabase Project URL</label><input name="url" placeholder="https://xxxx.supabase.co" value="'+esc(cfg.url||'')+'"></div><div class="field"><label>Supabase anon / publishable key</label><input name="key" placeholder="sb_publishable_… 또는 공개 anon 키" value="'+esc(cfg.key||'')+'"></div><p class="muted" style="font-size:12px">Discord 로그인은 Supabase Authentication에서 Discord Provider를 활성화하고 Client ID/Secret 및 Redirect URL을 설정해야 작동합니다. 여기에 service_role 키를 절대 입력하지 마세요. 로그인한 이용자는 shared_records 테이블을 통해 기록을 공유하고 실시간 변경을 받습니다. 처음 사용하기 전에 저장소의 supabase/schema.sql 전체를 Supabase SQL Editor에서 실행하세요. Discord Provider 설정과 Redirect URL도 필요합니다.</p><div class="modal-actions"><button type="button" class="btn" id="settingsCancel">취소</button><button type="submit" class="btn primary">설정 저장 및 연결</button></div></form></div></div>';
  const close=()=>document.getElementById('modalHost').innerHTML='';
  document.getElementById('settingsClose').onclick=document.getElementById('settingsCancel').onclick=close;
  document.getElementById('settingsBg').onclick=e=>{if(e.target.id==='settingsBg')close()};
- document.getElementById('settingsForm').onsubmit=e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));localStorage.setItem('policeRpCloudConfig',JSON.stringify({url:f.url.trim(),key:f.key.trim()}));close();setupCloud();toast('연동 설정을 저장했습니다. Discord Provider 설정도 확인하세요.')};
+ document.getElementById('settingsForm').onsubmit=e=>{e.preventDefault();const f=Object.fromEntries(new FormData(e.target));localStorage.setItem('policeRpCloudConfig',JSON.stringify({url:f.url.trim(),key:f.key.trim()}));close();setupCloud();toast('설정을 저장했습니다. 로그인 후 데이터 연결을 확인합니다.')};
 }
 document.getElementById('settingsBtn').onclick=openSettings;
 document.getElementById('discordBtn').onclick=async()=>{
