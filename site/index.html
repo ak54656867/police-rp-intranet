@@ -110,7 +110,7 @@ function setupCloud(){
    });
    supabaseClient.auth.onAuthStateChange((_event,session)=>{
     authUser=session?.user||null;updateAuthUI();
-    if(authUser){setTimeout(async()=>{try{await ensureProfile();await loadSharedData();}catch(e){console.error(e);toast('클라우드 동기화 오류: '+(e.message||''));}},0);}
+    if(authUser){setTimeout(async()=>{try{await ensureProfile();watchOwnProfile();if(authProfile?.status==='approved'||authProfile?.role==='admin'){closeModal();await loadSharedData();render();}else if(authProfile?.application_submitted){showOnboarding();const st=document.getElementById('onboardStatus');if(st)st.textContent='가입 신청이 접수되어 관리자 승인 대기 중입니다.';}}catch(e){console.error(e);toast('클라우드 동기화 오류: '+(e.message||''));}},0);}
     else{cloudReady=false;if(cloudChannel){supabaseClient.removeChannel(cloudChannel);cloudChannel=null;}updateAuthUI();}
    });
   }catch(e){console.error(e);toast('Supabase 초기화 실패: '+e.message);}
@@ -132,8 +132,12 @@ async function ensureProfile(){
  }
  authProfile=profile;
  updateAuthUI();
- if(profile.status!=='approved' && profile.role!=='admin') showOnboarding();
- else closeModal();
+ if(profile.status==='approved'||profile.role==='admin'){
+  closeModal();
+ }else{
+  showOnboarding();
+  if(profile.application_submitted){const st=document.getElementById('onboardStatus');if(st)st.textContent='가입 신청이 접수되어 관리자 승인 대기 중입니다.';}
+ }
 }
 function watchOwnProfile(){
  if(!supabaseClient||!authUser)return;
