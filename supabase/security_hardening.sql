@@ -48,7 +48,7 @@ as $$
   );
 $$;
 
-create or replace function public.can_write_shared_module(p_module text)
+create or replace function public.can_insert_shared_module(p_module text)
 returns boolean
 language sql
 stable
@@ -57,6 +57,7 @@ set search_path = public
 as $$
   select case
     when public.current_role() = 'admin' then true
+    when p_module in ('departments','positions','orgPermissions') then false
     when public.current_role() in ('chief','department_head','hr_manager') then true
     when public.current_role() = 'officer'
       then p_module in ('attendance','incidents','wanted','dispatch','leave','fines','audit')
@@ -66,10 +67,48 @@ as $$
   end;
 $$;
 
+create or replace function public.can_update_shared_module(p_module text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select case
+    when public.current_role() = 'admin' then true
+    when p_module in ('audit','departments','positions','orgPermissions') then false
+    when public.current_role() in ('chief','department_head','hr_manager') then true
+    when public.current_role() = 'officer'
+      then p_module in ('attendance','incidents','wanted','dispatch','leave','fines')
+    when public.current_role() = 'dispatcher'
+      then p_module in ('attendance','incidents','dispatch','leave')
+    else false
+  end;
+$$;
+
+create or replace function public.can_delete_shared_module(p_module text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select case
+    when public.current_role() = 'admin' then true
+    when p_module in ('audit','departments','positions','orgPermissions') then false
+    when public.current_role() in ('chief','department_head','hr_manager') then true
+    else false
+  end;
+$$;
+
 revoke all on function public.can_access_intranet() from public;
-revoke all on function public.can_write_shared_module(text) from public;
+revoke all on function public.can_insert_shared_module(text) from public;
+revoke all on function public.can_update_shared_module(text) from public;
+revoke all on function public.can_delete_shared_module(text) from public;
 grant execute on function public.can_access_intranet() to authenticated;
-grant execute on function public.can_write_shared_module(text) to authenticated;
+grant execute on function public.can_insert_shared_module(text) to authenticated;
+grant execute on function public.can_update_shared_module(text) to authenticated;
+grant execute on function public.can_delete_shared_module(text) to authenticated;
 
 -- Replace broad policies that previously allowed every authenticated account to
 -- read, overwrite, and delete all shared records, including privileged org data.
@@ -87,21 +126,21 @@ create policy "shared records insert by role"
   with check (
     public.can_access_intranet()
     and updated_by = auth.uid()
-    and public.can_write_shared_module(module)
+    and public.can_insert_shared_module(module)
   );
 
 create policy "shared records update by role"
   on public.shared_records for update to authenticated
-  using (public.can_access_intranet() and public.can_write_shared_module(module))
+  using (public.can_access_intranet() and public.can_update_shared_module(module))
   with check (
     public.can_access_intranet()
     and updated_by = auth.uid()
-    and public.can_write_shared_module(module)
+    and public.can_update_shared_module(module)
   );
 
 create policy "shared records delete by role"
   on public.shared_records for delete to authenticated
-  using (public.can_access_intranet() and public.can_write_shared_module(module));
+  using (public.can_access_intranet() and public.can_delete_shared_module(module));
 
 
 -- Apply the same approval gate to the legacy normalized tables as well.
