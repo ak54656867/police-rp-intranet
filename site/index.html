@@ -120,11 +120,16 @@ function setupCloud(){
 async function ensureProfile(){
  if(!supabaseClient||!authUser)return;
  const meta=authUser.user_metadata||{};
- const display=meta.full_name||meta.name||meta.global_name||authUser.email||'Discord 사용자';
- const {error:upsertError}=await supabaseClient.from('profiles').upsert({id:authUser.id,display_name:display},{onConflict:'id',ignoreDuplicates:true});
- if(upsertError)throw upsertError;
- const {data:profile,error}=await supabaseClient.from('profiles').select('*').eq('id',authUser.id).single();
+ const display=meta.global_name||meta.full_name||meta.name||authUser.email||'Discord 사용자';
+ let {data:profile,error}=await supabaseClient.from('profiles').select('*').eq('id',authUser.id).maybeSingle();
  if(error)throw error;
+ if(!profile){
+  const {error:insertError}=await supabaseClient.from('profiles').insert({id:authUser.id,display_name:display});
+  if(insertError)throw insertError;
+  const result=await supabaseClient.from('profiles').select('*').eq('id',authUser.id).single();
+  profile=result.data;error=result.error;
+  if(error)throw error;
+ }
  authProfile=profile;
  updateAuthUI();
  if(profile.status!=='approved' && profile.role!=='admin') showOnboarding();
