@@ -112,3 +112,75 @@ grant select,insert,update,delete on public.profiles,public.personnel,public.att
 -- IMPORTANT: create the first user in Supabase Authentication, then insert a matching profiles row.
 -- Example (replace UUID):
 -- insert into public.profiles(id,display_name,role,department,rank) values ('USER-UUID','시스템 관리자','admin','경찰청','치안총감');
+
+
+-- Shared live workspace used by the static GitHub Pages frontend.
+-- Each row is one record, so concurrent users can update different records without
+-- overwriting the entire workspace snapshot.
+create table if not exists public.shared_records (
+  module text not null check (module in ('personnel','attendance','incidents','wanted','dispatch','leave','assets','notices','documents','audit')),
+  record_id text not null,
+  payload jsonb not null,
+  updated_by uuid references auth.users(id) on delete set null,
+  updated_at timestamptz not null default now(),
+  primary key (module, record_id)
+);
+alter table public.shared_records enable row level security;
+drop policy if exists "shared records read authenticated" on public.shared_records;
+drop policy if exists "shared records insert authenticated" on public.shared_records;
+drop policy if exists "shared records update authenticated" on public.shared_records;
+drop policy if exists "shared records delete authenticated" on public.shared_records;
+create policy "shared records read authenticated" on public.shared_records
+  for select to authenticated using (auth.uid() is not null);
+create policy "shared records insert authenticated" on public.shared_records
+  for insert to authenticated with check (auth.uid() is not null and (updated_by is null or updated_by=auth.uid()));
+create policy "shared records update authenticated" on public.shared_records
+  for update to authenticated using (auth.uid() is not null)
+  with check (auth.uid() is not null and (updated_by is null or updated_by=auth.uid()));
+create policy "shared records delete authenticated" on public.shared_records
+  for delete to authenticated using (auth.uid() is not null);
+grant select, insert, update, delete on public.shared_records to authenticated;
+
+-- Create a basic officer profile automatically for new Discord/OAuth users.
+create or replace function public.handle_new_auth_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, display_name, role, department, rank, active)
+  values (
+    new.id,
+    coalesce(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name', new.email, '신규 이용자'),
+    'officer', '미배정', '순경', true
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+drop trigger if exists on_auth_user_created_profile on auth.users;
+create trigger on_auth_user_created_profile
+  after insert on auth.users
+  for each row execute procedure public.handle_new_auth_user();
+
+-- Ensure authenticated users can create only their own default officer profile if
+-- the trigger was not installed when their account was created.
+drop policy if exists "profile self insert officer" on public.profiles;
+create policy "profile self insert officer" on public.profiles
+  for insert to authenticated
+  with check (id=auth.uid() and role='officer');
+
+-- Enable Realtime for the shared records table. Safe to run repeatedly.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname='supabase_realtime' and schemaname='public' and tablename='shared_records'
+  ) then
+    alter publication supabase_realtime add table public.shared_records;
+  end if;
+exception when undefined_object then
+  raise notice 'supabase_realtime publication was not found; enable Realtime for shared_records in Supabase Dashboard.';
+end;
+$$;
