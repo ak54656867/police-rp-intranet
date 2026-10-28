@@ -125,7 +125,7 @@ async function loadSharedData(){
     lastSyncedSnapshot=JSON.stringify(synced);render();
    }finally{cloudApplying=false;}
    if(cloudReady&&JSON.stringify(data)!==lastSyncedSnapshot)save();
-  }).subscribe();
+  }).subscribe((status,error)=>{if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'){console.error('Realtime subscription failed',status,error);toast('실시간 동기화 연결 실패: '+status+' · 새로고침하거나 Supabase Realtime 설정을 확인하세요.');}});
  render();updateAuthUI();
  })();
  try{return await cloudLoadPromise;}finally{cloudLoadPromise=null;}
