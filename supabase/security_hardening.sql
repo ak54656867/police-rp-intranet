@@ -233,6 +233,19 @@ drop policy if exists "incident read" on public.incidents;
 create policy "incident read approved" on public.incidents
   for select to authenticated using (public.can_access_intranet());
 drop policy if exists "incident manage" on public.incidents;
+drop policy if exists "incident write approved" on public.incidents;
+drop policy if exists "incident update approved" on public.incidents;
+drop policy if exists "incident delete managers" on public.incidents;
+create policy "incident write approved" on public.incidents
+  for insert to authenticated
+  with check (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','dispatcher','officer'));
+create policy "incident update approved" on public.incidents
+  for update to authenticated
+  using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','dispatcher','officer'))
+  with check (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','dispatcher','officer'));
+create policy "incident delete managers" on public.incidents
+  for delete to authenticated
+  using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','hr_manager'));
 create policy "incident manage approved" on public.incidents
   for all to authenticated
   using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','dispatcher','officer'))
@@ -242,6 +255,19 @@ drop policy if exists "wanted read" on public.wanted_persons;
 create policy "wanted read approved" on public.wanted_persons
   for select to authenticated using (public.can_access_intranet());
 drop policy if exists "wanted manage" on public.wanted_persons;
+drop policy if exists "wanted write approved" on public.wanted_persons;
+drop policy if exists "wanted update approved" on public.wanted_persons;
+drop policy if exists "wanted delete managers" on public.wanted_persons;
+create policy "wanted write approved" on public.wanted_persons
+  for insert to authenticated
+  with check (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','officer'));
+create policy "wanted update approved" on public.wanted_persons
+  for update to authenticated
+  using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','officer'))
+  with check (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','officer'));
+create policy "wanted delete managers" on public.wanted_persons
+  for delete to authenticated
+  using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','hr_manager'));
 create policy "wanted manage approved" on public.wanted_persons
   for all to authenticated
   using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','officer'))
@@ -251,6 +277,19 @@ drop policy if exists "dispatch read" on public.dispatches;
 create policy "dispatch read approved" on public.dispatches
   for select to authenticated using (public.can_access_intranet());
 drop policy if exists "dispatch manage" on public.dispatches;
+drop policy if exists "dispatch write approved" on public.dispatches;
+drop policy if exists "dispatch update approved" on public.dispatches;
+drop policy if exists "dispatch delete managers" on public.dispatches;
+create policy "dispatch write approved" on public.dispatches
+  for insert to authenticated
+  with check (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','dispatcher','officer'));
+create policy "dispatch update approved" on public.dispatches
+  for update to authenticated
+  using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','dispatcher','officer'))
+  with check (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','dispatcher','officer'));
+create policy "dispatch delete managers" on public.dispatches
+  for delete to authenticated
+  using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','hr_manager'));
 create policy "dispatch manage approved" on public.dispatches
   for all to authenticated
   using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','dispatcher','officer'))
