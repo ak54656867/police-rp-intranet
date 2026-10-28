@@ -95,10 +95,17 @@ async function loadSharedData(){
    const row=payload.new||payload.old;if(!row||!cloudModules.includes(row.module))return;
    cloudApplying=true;
    try{
-    const arr=data[row.module]||(data[row.module]=[]);
-    const idx=arr.findIndex(x=>String(x.id)===String(row.record_id));
-    if(payload.eventType==='DELETE'){if(idx>=0)arr.splice(idx,1);}
-    else if(row.payload){if(idx>=0)arr[idx]=row.payload;else arr.unshift(row.payload);}
+    const listModules=['departments','positions','orgPermissions'];
+    if(listModules.includes(row.module)){
+     if(payload.eventType==='DELETE'){if(row.record_id==='__list__')data[row.module]=[];}
+     else if(row.record_id==='__list__'&&Array.isArray(row.payload))data[row.module]=row.payload;
+     else if(typeof row.payload==='string'&&!data[row.module].includes(row.payload))data[row.module].push(row.payload);
+    }else{
+     const arr=data[row.module]||(data[row.module]=[]);
+     const idx=arr.findIndex(x=>String(x.id)===String(row.record_id));
+     if(payload.eventType==='DELETE'){if(idx>=0)arr.splice(idx,1);}
+     else if(row.payload){if(idx>=0)arr[idx]=row.payload;else arr.unshift(row.payload);}
+    }
     saveLocalOnly();lastSavedSnapshot=JSON.stringify(data);render();
    }finally{cloudApplying=false;}
   }).subscribe();
