@@ -2,6 +2,49 @@
 -- Run this file once in Supabase SQL Editor after reviewing it.
 begin;
 
+-- Make this migration safely re-runnable by removing its own policies first.
+drop policy if exists "profile read own or approved managers" on public.profiles;
+drop policy if exists "shared records read approved members" on public.shared_records;
+drop policy if exists "shared records insert by role" on public.shared_records;
+drop policy if exists "shared records update by role" on public.shared_records;
+drop policy if exists "shared records delete by role" on public.shared_records;
+drop policy if exists "personnel read approved" on public.personnel;
+drop policy if exists "personnel manage by role" on public.personnel;
+drop policy if exists "attendance read approved" on public.attendance;
+drop policy if exists "attendance insert approved" on public.attendance;
+drop policy if exists "attendance update approved" on public.attendance;
+drop policy if exists "incident read approved" on public.incidents;
+drop policy if exists "incident write approved" on public.incidents;
+drop policy if exists "incident update approved" on public.incidents;
+drop policy if exists "incident delete managers" on public.incidents;
+drop policy if exists "incident manage approved" on public.incidents;
+drop policy if exists "wanted read approved" on public.wanted_persons;
+drop policy if exists "wanted write approved" on public.wanted_persons;
+drop policy if exists "wanted update approved" on public.wanted_persons;
+drop policy if exists "wanted delete managers" on public.wanted_persons;
+drop policy if exists "wanted manage approved" on public.wanted_persons;
+drop policy if exists "dispatch read approved" on public.dispatches;
+drop policy if exists "dispatch write approved" on public.dispatches;
+drop policy if exists "dispatch update approved" on public.dispatches;
+drop policy if exists "dispatch delete managers" on public.dispatches;
+drop policy if exists "dispatch manage approved" on public.dispatches;
+drop policy if exists "leave read approved own or managers" on public.leave_requests;
+drop policy if exists "leave create approved own" on public.leave_requests;
+drop policy if exists "leave review approved" on public.leave_requests;
+drop policy if exists "assets read approved" on public.assets;
+drop policy if exists "assets manage by role" on public.assets;
+drop policy if exists "notices read approved" on public.notices;
+drop policy if exists "notices manage by role" on public.notices;
+drop policy if exists "audit read approved managers" on public.audit_logs;
+drop policy if exists "audit insert approved staff" on public.audit_logs;
+drop policy if exists "org read approved" on public.org_units;
+drop policy if exists "org manage by role" on public.org_units;
+drop policy if exists "documents read approved" on public.documents;
+drop policy if exists "documents manage by role" on public.documents;
+drop policy if exists "profile self insert officer" on public.profiles;
+
+
+
 -- The frontend onboarding flow expects these profile fields. Keep new users pending
 -- and prevent users from approving themselves or granting themselves a privileged role.
 alter table public.profiles
