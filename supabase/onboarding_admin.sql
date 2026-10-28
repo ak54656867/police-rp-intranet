@@ -73,7 +73,7 @@ drop policy if exists "applicant update own pending profile" on public.profiles;
 drop policy if exists "profile self insert officer" on public.profiles;
 create policy "profile self insert officer"
   on public.profiles for insert to authenticated
-  with check (id=auth.uid() and role='officer' and status='pending' and active=false);
+  with check (id=auth.uid() and role='officer' and status='pending' and active=true);
 
 grant select, insert, update on public.profiles to authenticated;
 
