@@ -10,8 +10,8 @@
     "dist": "electron-builder --win nsis --x64"
   },
   "devDependencies": {
-    "electron": "^36.3.0",
-    "electron-builder": "^26.0.12"
+    "electron": "45.1.0",
+    "electron-builder": "26.0.12"
   },
   "build": {
     "appId": "kr.policerp.intranet",
