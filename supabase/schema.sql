@@ -430,10 +430,8 @@ create policy "incident update approved" on public.incidents
 create policy "incident delete managers" on public.incidents
   for delete to authenticated
   using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','hr_manager'));
-create policy "incident manage approved" on public.incidents
-  for all to authenticated
-  using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','dispatcher','officer'))
-  with check (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','dispatcher','officer'));
+-- Removed legacy broad policy: incident manage approved.
+
 
 drop policy if exists "wanted read" on public.wanted_persons;
 create policy "wanted read approved" on public.wanted_persons
@@ -453,10 +451,8 @@ create policy "wanted update approved" on public.wanted_persons
 create policy "wanted delete managers" on public.wanted_persons
   for delete to authenticated
   using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','hr_manager'));
-create policy "wanted manage approved" on public.wanted_persons
-  for all to authenticated
-  using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','officer'))
-  with check (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','officer'));
+-- Removed legacy broad policy: wanted manage approved.
+
 
 drop policy if exists "dispatch read" on public.dispatches;
 create policy "dispatch read approved" on public.dispatches
@@ -476,10 +472,8 @@ create policy "dispatch update approved" on public.dispatches
 create policy "dispatch delete managers" on public.dispatches
   for delete to authenticated
   using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','hr_manager'));
-create policy "dispatch manage approved" on public.dispatches
-  for all to authenticated
-  using (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','dispatcher','officer'))
-  with check (public.can_access_intranet() and public.current_role() in ('admin','chief','department_head','dispatcher','officer'));
+-- Removed legacy broad policy: dispatch manage approved.
+
 
 drop policy if exists "leave read own or managers" on public.leave_requests;
 create policy "leave read approved own or managers" on public.leave_requests
