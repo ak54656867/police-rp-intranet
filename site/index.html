@@ -106,7 +106,7 @@ function setupCloud(){
    supabaseClient.auth.getSession().then(async({data,error})=>{
     if(error){toast('세션 확인 실패: '+error.message);return;}
     authUser=data.session?.user||null;updateAuthUI();
-    if(authUser){try{await ensureProfile();await loadSharedData();toast('공유 데이터베이스 연결 완료');}catch(e){cloudReady=false;console.error(e);toast('데이터베이스 연결 실패: '+(e.message||'SQL 설정을 확인하세요.'));}}
+    if(authUser){try{await ensureProfile(); watchOwnProfile();await loadSharedData();toast('공유 데이터베이스 연결 완료');}catch(e){cloudReady=false;console.error(e);toast('데이터베이스 연결 실패: '+(e.message||'SQL 설정을 확인하세요.'));}}
    });
    supabaseClient.auth.onAuthStateChange((_event,session)=>{
     authUser=session?.user||null;updateAuthUI();
@@ -134,6 +134,21 @@ async function ensureProfile(){
  updateAuthUI();
  if(profile.status!=='approved' && profile.role!=='admin') showOnboarding();
  else closeModal();
+}
+function watchOwnProfile(){
+ if(!supabaseClient||!authUser)return;
+ supabaseClient.channel('profile-status-'+authUser.id)
+  .on('postgres_changes',{event:'UPDATE',schema:'public',table:'profiles',filter:'id=eq.'+authUser.id},async payload=>{
+   const p=payload.new;
+   if(!p)return;
+   authProfile=p;
+   updateAuthUI();
+   if(p.status==='approved'||p.role==='admin'){
+    closeModal();
+    try{await loadSharedData();render();toast('가입 승인이 완료되었습니다. 인트라넷에 접속합니다.');}
+    catch(e){toast('승인은 완료됐지만 데이터 불러오기에 실패했습니다: '+(e.message||e));}
+   }else if(p.status==='rejected'){showOnboarding();toast('가입 신청이 반려되었습니다. 신청 내용을 확인해 주세요.');}
+  }).subscribe();
 }
 function updateAuthUI(){
  const gate=document.getElementById('loginGate');
@@ -169,12 +184,20 @@ async function openApplications(){
 }
 async function reviewApplication(id,approve){
  if(authProfile?.role!=='admin'){toast('관리자 권한이 필요합니다.');return;}
- const {data:app,error:readError}=await supabaseClient.from('profiles').select('*').eq('id',id).single();
- if(readError){toast('신청 정보를 불러오지 못했습니다.');return;}
- const patch=approve?{status:'approved',active:true,rank:app.requested_rank||'순경',department:app.requested_department||'미배정',role:'officer'}:{status:'rejected',active:false};
- const {error}=await supabaseClient.from('profiles').update(patch).eq('id',id);
- if(error){toast('처리 실패: '+error.message);return;}
- toast(approve?'가입 신청을 승인했습니다.':'가입 신청을 반려했습니다.');openApplications();
+ if(!supabaseClient){toast('데이터베이스 연결이 없습니다.');return;}
+ const buttons=[...document.querySelectorAll('[data-approve], [data-reject]')];
+ buttons.forEach(b=>b.disabled=true);
+ try{
+  const {data:app,error:readError}=await supabaseClient.from('profiles').select('*').eq('id',id).single();
+  if(readError)throw new Error('신청 정보를 불러오지 못했습니다: '+readError.message);
+  const patch=approve?{status:'approved',active:true,rank:app.requested_rank||'순경',department:app.requested_department||'미배정',role:'officer'}:{status:'rejected',active:false};
+  const {data:updated,error}=await supabaseClient.from('profiles').update(patch).eq('id',id).select('id,status,active,role').single();
+  if(error)throw new Error('처리 실패: '+error.message);
+  if(!updated || (approve && (updated.status!=='approved'||updated.active!==true)))throw new Error('승인 결과가 데이터베이스에 반영되지 않았습니다. Supabase profiles 정책을 확인해야 합니다.');
+  toast(approve?'승인 완료! 해당 이용자는 새로고침하면 인트라넷에 들어갈 수 있습니다.':'가입 신청을 반려했습니다.');
+  await openApplications();
+ }catch(e){toast(e.message||'승인 처리 중 오류가 발생했습니다.');}
+ finally{document.querySelectorAll('[data-approve], [data-reject]').forEach(b=>b.disabled=false);}
 }
 function openSettings(){
  const cfg=getCloudConfig();
