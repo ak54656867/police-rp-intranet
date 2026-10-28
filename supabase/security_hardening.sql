@@ -17,11 +17,44 @@ alter table public.profiles
 alter table public.profiles
   add constraint profiles_status_check check (status in ('pending','approved','rejected','suspended','dismissed'));
 
+-- Allow rejected applicants to resubmit through the existing application form.
+create or replace function public.reopen_rejected_application()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if old.status='rejected'
+     and old.role='officer'
+     and new.application_submitted=true
+     and auth.uid()=old.id then
+    new.status='pending';
+    new.active=true;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists reopen_rejected_application_trigger on public.profiles;
+create trigger reopen_rejected_application_trigger
+  before update on public.profiles
+  for each row execute function public.reopen_rejected_application();
+
 drop policy if exists "profile self update application" on public.profiles;
 create policy "profile self update application"
   on public.profiles for update to authenticated
-  using (id = auth.uid() and role = 'officer' and status = 'pending' and active = true)
-  with check (id = auth.uid() and role = 'officer' and status = 'pending' and active = true);
+  using (
+    id=auth.uid()
+    and role='officer'
+    and (status='pending' or status='rejected')
+    and (active=true or status='rejected')
+  )
+  with check (
+    id=auth.uid()
+    and role='officer'
+    and status='pending'
+    and active=true
+  );
 
 -- The frontend sync list contains modules omitted from the original database constraint.
 alter table public.shared_records
