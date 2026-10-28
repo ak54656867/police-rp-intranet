@@ -29,9 +29,18 @@ function save(){
 }
 async function syncDiff(previous,current){
  if(!supabaseClient||!authUser||!cloudReady)return;
+ const listModules=['departments','positions','orgPermissions'];
  for(const module of cloudModules){
   const before=Array.isArray(previous[module])?previous[module]:[],after=Array.isArray(current[module])?current[module]:[];
-  const beforeMap=new Map(before.map(x=>[String(x.id),x])),afterMap=new Map(after.map(x=>[String(x.id),x]));
+  if(listModules.includes(module)){
+   if(JSON.stringify(before)!==JSON.stringify(after)){
+    const {error}=await supabaseClient.from('shared_records').upsert({module,record_id:'__list__',payload:after,updated_by:authUser.id},{onConflict:'module,record_id'});
+    if(error)throw error;
+   }
+   continue;
+  }
+  const beforeMap=new Map(before.filter(x=>x&&x.id!==undefined&&x.id!==null).map(x=>[String(x.id),x]));
+  const afterMap=new Map(after.filter(x=>x&&x.id!==undefined&&x.id!==null).map(x=>[String(x.id),x]));
   for(const [id,item] of afterMap){
    if(JSON.stringify(beforeMap.get(id))===JSON.stringify(item))continue;
    const {error}=await supabaseClient.from('shared_records').upsert({module,record_id:id,payload:item,updated_by:authUser.id},{onConflict:'module,record_id'});
@@ -54,13 +63,25 @@ async function loadSharedData(){
    for(const row of stale){const {error:cleanupError}=await supabaseClient.from('shared_records').delete().eq('module',row.module).eq('record_id',row.record_id);if(cleanupError)throw cleanupError;}
    const cleanRows=rows.filter(row=>!stale.includes(row));
    for(const module of cloudModules)data[module]=[];
-   for(const row of cleanRows){if(cloudModules.includes(row.module)&&row.payload)data[row.module].push(row.payload);}
-   for(const module of cloudModules)data[module].sort((a,b)=>String(b.date||b.created_at||b.in||'').localeCompare(String(a.date||a.created_at||a.in||'')));
+   const listModules=['departments','positions','orgPermissions'],listPayloads={};
+   for(const row of cleanRows){
+    if(!cloudModules.includes(row.module)||row.payload===null||row.payload===undefined)continue;
+    if(listModules.includes(row.module)){
+     if(row.record_id==='__list__'&&Array.isArray(row.payload))listPayloads[row.module]=row.payload;
+     else if(typeof row.payload==='string')data[row.module].push(row.payload);
+     continue;
+    }
+    data[row.module].push(row.payload);
+   }
+   for(const module of listModules)if(Array.isArray(listPayloads[module]))data[module]=listPayloads[module];
+   for(const module of cloudModules)if(!listModules.includes(module))data[module].sort((a,b)=>String(b.date||b.created_at||b.in||'').localeCompare(String(a.date||a.created_at||a.in||'')));
    saveLocalOnly();
   }else{
    // First connected member seeds an empty workspace from this browser's current records.
    const initial={};for(const module of cloudModules)initial[module]=Array.isArray(data[module])?data[module]:[];
-   for(const module of cloudModules){for(const item of initial[module]){const {error:writeError}=await supabaseClient.from('shared_records').upsert({module,record_id:String(item.id??crypto.randomUUID()),payload:item,updated_by:authUser.id},{onConflict:'module,record_id'});if(writeError)throw writeError;}}
+   const listModules=['departments','positions','orgPermissions'];
+   for(const module of listModules){const {error:writeError}=await supabaseClient.from('shared_records').upsert({module,record_id:'__list__',payload:initial[module],updated_by:authUser.id},{onConflict:'module,record_id'});if(writeError)throw writeError;}
+   for(const module of cloudModules){if(listModules.includes(module))continue;for(const item of initial[module]){const recordId=String(item?.id??crypto.randomUUID());const {error:writeError}=await supabaseClient.from('shared_records').upsert({module,record_id:recordId,payload:item,updated_by:authUser.id},{onConflict:'module,record_id'});if(writeError)throw writeError;}}
   }
   lastSavedSnapshot=JSON.stringify(data);
   lastSyncedSnapshot=lastSavedSnapshot;
