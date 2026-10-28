@@ -12,7 +12,7 @@ try{
  for(const key of Object.keys(defaults)){if(Array.isArray(defaults[key])&&!Array.isArray(data[key]))data[key]=defaults[key].slice();}
 }catch{data={...defaults,wanted:[],dispatch:[],leave:[],assets:[],documents:[],personnel:[],attendance:[],incidents:[],fines:[],departments:defaults.departments.slice(),positions:defaults.positions.slice(),orgPermissions:defaults.orgPermissions.slice(),notices:defaults.notices.slice(),audit:[]};}
 let page='home',query='',modalType='',supabaseClient=null,authUser=null,authProfile=null;
-let cloudReady=false,cloudApplying=false,cloudChannel=null,lastSavedSnapshot=JSON.stringify(data),lastSyncedSnapshot=JSON.stringify(data),syncQueue=Promise.resolve();
+let cloudReady=false,cloudApplying=false,cloudChannel=null,profileChannel=null,cloudLoadPromise=null,lastSavedSnapshot=JSON.stringify(data),lastSyncedSnapshot=JSON.stringify(data),syncQueue=Promise.resolve();
 const cloudModules=['personnel','attendance','incidents','wanted','dispatch','leave','assets','notices','documents','audit','fines','departments','positions','orgPermissions'];
 function save(){
  const next=JSON.stringify(data);
@@ -50,6 +50,8 @@ async function syncDiff(previous,current){
  }
 }
 async function loadSharedData(){
+ if(cloudLoadPromise)return cloudLoadPromise;
+ cloudLoadPromise=(async()=>{
  if(!supabaseClient||!authUser)return;
  if(authProfile&&authProfile.status!=='approved'&&authProfile.role!=='admin')return;
  cloudReady=false;
@@ -108,10 +110,12 @@ async function loadSharedData(){
      if(payload.eventType==='DELETE'){if(idx>=0)arr.splice(idx,1);}
      else if(row.payload){if(idx>=0)arr[idx]=row.payload;else arr.unshift(row.payload);}
     }
-    saveLocalOnly();lastSavedSnapshot=JSON.stringify(data);render();
+    saveLocalOnly();lastSavedSnapshot=JSON.stringify(data);lastSyncedSnapshot=lastSavedSnapshot;render();
    }finally{cloudApplying=false;}
   }).subscribe();
  render();updateAuthUI();
+ })();
+ try{return await cloudLoadPromise;}finally{cloudLoadPromise=null;}
 }
 function saveLocalOnly(){localStorage.setItem('policeRpData',JSON.stringify(data));}
 function esc(s=''){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -276,7 +280,8 @@ async function ensureProfile(){
 }
 function watchOwnProfile(){
  if(!supabaseClient||!authUser)return;
- supabaseClient.channel('profile-status-'+authUser.id)
+ if(profileChannel){supabaseClient.removeChannel(profileChannel);profileChannel=null;}
+ profileChannel=supabaseClient.channel('profile-status-'+authUser.id)
   .on('postgres_changes',{event:'UPDATE',schema:'public',table:'profiles',filter:'id=eq.'+authUser.id},async payload=>{
    const p=payload.new;
    if(!p)return;
