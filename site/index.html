@@ -51,6 +51,7 @@ async function syncDiff(previous,current){
 }
 async function loadSharedData(){
  if(!supabaseClient||!authUser)return;
+ if(authProfile&&authProfile.status!=='approved'&&authProfile.role!=='admin')return;
  cloudReady=false;
  const {data:rows,error}=await supabaseClient.from('shared_records').select('module,record_id,payload');
  if(error)throw error;
@@ -76,12 +77,15 @@ async function loadSharedData(){
    for(const module of listModules)if(Array.isArray(listPayloads[module]))data[module]=listPayloads[module];
    for(const module of cloudModules)if(!listModules.includes(module))data[module].sort((a,b)=>String(b.date||b.created_at||b.in||'').localeCompare(String(a.date||a.created_at||a.in||'')));
    saveLocalOnly();
-  }else{
-   // First connected member seeds an empty workspace from this browser's current records.
+  }else if(authProfile?.role==='admin'){
+   // Only a trusted administrator may initialize an empty shared workspace.
    const initial={};for(const module of cloudModules)initial[module]=Array.isArray(data[module])?data[module]:[];
    const listModules=['departments','positions','orgPermissions'];
    for(const module of listModules){const {error:writeError}=await supabaseClient.from('shared_records').upsert({module,record_id:'__list__',payload:initial[module],updated_by:authUser.id},{onConflict:'module,record_id'});if(writeError)throw writeError;}
    for(const module of cloudModules){if(listModules.includes(module))continue;for(const item of initial[module]){const recordId=String(item?.id??crypto.randomUUID());const {error:writeError}=await supabaseClient.from('shared_records').upsert({module,record_id:recordId,payload:item,updated_by:authUser.id},{onConflict:'module,record_id'});if(writeError)throw writeError;}}
+  }else{
+   // Never seed one member's browser-local records into the shared workspace.
+   for(const module of cloudModules)data[module]=[];
   }
   lastSavedSnapshot=JSON.stringify(data);
   lastSyncedSnapshot=lastSavedSnapshot;
