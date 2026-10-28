@@ -12,7 +12,7 @@ try{
  for(const key of Object.keys(defaults)){if(Array.isArray(defaults[key])&&!Array.isArray(data[key]))data[key]=defaults[key].slice();}
 }catch{data={...defaults,wanted:[],dispatch:[],leave:[],assets:[],documents:[],personnel:[],attendance:[],incidents:[],fines:[],departments:defaults.departments.slice(),positions:defaults.positions.slice(),orgPermissions:defaults.orgPermissions.slice(),notices:defaults.notices.slice(),audit:[]};}
 let page='home',query='',modalType='',supabaseClient=null,authUser=null,authProfile=null;
-let cloudReady=false,cloudApplying=false,cloudChannel=null,profileChannel=null,cloudLoadPromise=null,lastSavedSnapshot=JSON.stringify(data),lastSyncedSnapshot=JSON.stringify(data),syncQueue=Promise.resolve();
+let cloudReady=false,cloudApplying=false,cloudChannel=null,profileChannel=null,authSubscription=null,cloudLoadPromise=null,lastSavedSnapshot=JSON.stringify(data),lastSyncedSnapshot=JSON.stringify(data),syncQueue=Promise.resolve();
 const cloudModules=['personnel','attendance','incidents','wanted','dispatch','leave','assets','notices','documents','audit','fines','departments','positions','orgPermissions'];
 function save(){
  const next=JSON.stringify(data);
@@ -238,6 +238,10 @@ render();
 
 function getCloudConfig(){const defaults={url:'https://lnauhbnisreigaqoeabq.supabase.co',key:'sb_publishable_j43MRec1n_BNhmoJoHaI6A_P0Vtuc5O'};try{return {...defaults,...(JSON.parse(localStorage.getItem('policeRpCloudConfig'))||{})}}catch{return defaults}}
 function setupCloud(){
+ if(authSubscription){authSubscription.unsubscribe();authSubscription=null;}
+ if(supabaseClient&&cloudChannel){supabaseClient.removeChannel(cloudChannel);cloudChannel=null;}
+ if(supabaseClient&&profileChannel){supabaseClient.removeChannel(profileChannel);profileChannel=null;}
+ cloudReady=false;cloudLoadPromise=null;
  const cfg=getCloudConfig();
  if(cfg.url&&cfg.key&&window.supabase){
   try{
@@ -247,11 +251,14 @@ function setupCloud(){
     authUser=data.session?.user||null;updateAuthUI();
     if(authUser){try{await ensureProfile(); watchOwnProfile();await loadSharedData();toast('공유 데이터베이스 연결 완료');}catch(e){cloudReady=false;console.error(e);toast('데이터베이스 연결 실패: '+(e.message||'SQL 설정을 확인하세요.'));}}
    });
-   supabaseClient.auth.onAuthStateChange((_event,session)=>{
+   const {data:{subscription}}=supabaseClient.auth.onAuthStateChange((_event,session)=>{
+    const previousUserId=authUser?.id||null;
     authUser=session?.user||null;updateAuthUI();
+    if(authUser&&previousUserId===authUser.id&&cloudReady)return;
     if(authUser){setTimeout(async()=>{try{await ensureProfile();watchOwnProfile();if(authProfile?.status==='approved'||authProfile?.role==='admin'){closeModal();await loadSharedData();render();}else if(authProfile?.application_submitted){showOnboarding();const st=document.getElementById('onboardStatus');if(st)st.textContent='가입 신청이 접수되어 관리자 승인 대기 중입니다.';}}catch(e){console.error(e);toast('클라우드 동기화 오류: '+(e.message||''));}},0);}
-    else{cloudReady=false;if(cloudChannel){supabaseClient.removeChannel(cloudChannel);cloudChannel=null;}updateAuthUI();}
+    else{cloudReady=false;authProfile=null;if(cloudChannel){supabaseClient.removeChannel(cloudChannel);cloudChannel=null;}if(profileChannel){supabaseClient.removeChannel(profileChannel);profileChannel=null;}updateAuthUI();}
    });
+   authSubscription=subscription;
   }catch(e){console.error(e);toast('Supabase 초기화 실패: '+e.message);}
  }
  updateAuthUI();
