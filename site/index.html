@@ -217,7 +217,7 @@ function modal(type){modalType=type;const title={person:'경찰관 등록',incid
  else if(type==='dispatch'){
   const nums=data.dispatch.map(x=>Number(String(x.no||'').replace(/^DSP-/,'') )).filter(Number.isFinite);
   data.dispatch.unshift({id,no:'DSP-'+String(Math.max(0,...nums)+1).padStart(4,'0'),...f,status:'접수',date:now});
- }else if(type==='leave')data.leave.unshift({id,...f,status:'신청',date:now});
+ }else if(type==='leave')data.leave.unshift({id,...f,userId:authUser?.id||null,status:'신청',date:now});
  else if(type==='asset')data.assets.unshift({id,...f,createdAt:now});
  else if(type==='document'){
   const year=new Date().getFullYear(),nums=data.documents.map(x=>String(x.no||'').match(new RegExp('^DOC-'+year+'-(\\d+)$'))).filter(Boolean).map(m=>Number(m[1]));
