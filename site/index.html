@@ -168,7 +168,8 @@ function updateAuthUI(){
   meta.textContent=admin?'생활안전교통국 · 최고 관리자':authProfile?.status==='approved'?((authProfile.rank||'순경')+' · '+(authProfile.department||'미배정')):'가입 신청 대기';
   avatar.textContent=(name.textContent||'D').slice(0,1);btn.textContent='로그아웃';tag.textContent=admin?'SUPER ADMIN':authProfile?.status==='approved'?'AUTHENTICATED':'PENDING';
   if(admin&&!adminBtn){adminBtn=document.createElement('button');adminBtn.id='applicationsBtn';adminBtn.className='btn';adminBtn.textContent='가입 신청 관리';adminBtn.onclick=openApplications;document.querySelector('.top-right').insertBefore(adminBtn,tag);}
-  if(admin&&!adminCenterBtn){adminCenterBtn=document.createElement('button');adminCenterBtn.id='adminCenterBtn';adminCenterBtn.className='btn';adminCenterBtn.textContent='최고 관리자 센터';adminCenterBtn.onclick=openAdminCenter;document.querySelector('.top-right').insertBefore(adminCenterBtn,tag);}\n  if(!admin&&adminBtn)adminBtn.remove();if(!admin&&adminCenterBtn)adminCenterBtn.remove();
+  if(admin&&!adminCenterBtn){adminCenterBtn=document.createElement('button');adminCenterBtn.id='adminCenterBtn';adminCenterBtn.className='btn';adminCenterBtn.textContent='최고 관리자 센터';adminCenterBtn.onclick=openAdminCenter;document.querySelector('.top-right').insertBefore(adminCenterBtn,tag);}
+  if(!admin&&adminBtn)adminBtn.remove();if(!admin&&adminCenterBtn)adminCenterBtn.remove();
  } else {
   authProfile=null;name.textContent='로그인 전';meta.textContent=supabaseClient?'Discord 인증 후 클라우드 사용':'연동 설정이 필요합니다';avatar.textContent='경';btn.textContent='Discord 로그인';tag.textContent=supabaseClient?'LOGIN REQUIRED':'SETUP REQUIRED';if(adminBtn)adminBtn.remove();
  }
