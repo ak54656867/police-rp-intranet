@@ -76,6 +76,7 @@ async function loadSharedData(){
   }else if(authProfile?.role==='admin'){
    // Only a trusted administrator may initialize an empty shared workspace.
    const initial={};for(const module of cloudModules)initial[module]=Array.isArray(data[module])?data[module]:[];
+   initial.audit=initial.audit.filter(item=>item&&item.userId===authUser.id);data.audit=initial.audit;
    const listModules=['departments','positions','orgPermissions'];
    for(const module of listModules){const {error:writeError}=await supabaseClient.from('shared_records').upsert({module,record_id:'__list__',payload:initial[module],updated_by:authUser.id},{onConflict:'module,record_id'});if(writeError)throw writeError;}
    for(const module of cloudModules){if(listModules.includes(module))continue;for(const item of initial[module]){const recordId=String(item?.id??crypto.randomUUID());const {error:writeError}=await supabaseClient.from('shared_records').upsert({module,record_id:recordId,payload:item,updated_by:authUser.id},{onConflict:'module,record_id'});if(writeError)throw writeError;}}
