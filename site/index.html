@@ -82,6 +82,7 @@ async function loadSharedData(){
   }else{
    // Never seed one member's browser-local records into the shared workspace.
    for(const module of cloudModules)data[module]=[];
+   data.departments=defaults.departments.slice();data.positions=defaults.positions.slice();data.orgPermissions=defaults.orgPermissions.slice();
   }
   lastSavedSnapshot=JSON.stringify(data);
   lastSyncedSnapshot=lastSavedSnapshot;
