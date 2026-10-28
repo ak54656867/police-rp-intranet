@@ -252,6 +252,7 @@ drop policy if exists "incident read" on public.incidents;
 create policy "incident read approved" on public.incidents
   for select to authenticated using (public.can_access_intranet());
 drop policy if exists "incident manage" on public.incidents;
+drop policy if exists "incident manage approved" on public.incidents;
 drop policy if exists "incident write approved" on public.incidents;
 drop policy if exists "incident update approved" on public.incidents;
 drop policy if exists "incident delete managers" on public.incidents;
@@ -274,6 +275,7 @@ drop policy if exists "wanted read" on public.wanted_persons;
 create policy "wanted read approved" on public.wanted_persons
   for select to authenticated using (public.can_access_intranet());
 drop policy if exists "wanted manage" on public.wanted_persons;
+drop policy if exists "wanted manage approved" on public.wanted_persons;
 drop policy if exists "wanted write approved" on public.wanted_persons;
 drop policy if exists "wanted update approved" on public.wanted_persons;
 drop policy if exists "wanted delete managers" on public.wanted_persons;
@@ -296,6 +298,7 @@ drop policy if exists "dispatch read" on public.dispatches;
 create policy "dispatch read approved" on public.dispatches
   for select to authenticated using (public.can_access_intranet());
 drop policy if exists "dispatch manage" on public.dispatches;
+drop policy if exists "dispatch manage approved" on public.dispatches;
 drop policy if exists "dispatch write approved" on public.dispatches;
 drop policy if exists "dispatch update approved" on public.dispatches;
 drop policy if exists "dispatch delete managers" on public.dispatches;
