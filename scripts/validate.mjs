@@ -72,6 +72,7 @@ check('realtime synchronization regression guards', () => {
   if (!html.includes('lastSyncedSnapshot=JSON.stringify(synced)')) throw new Error('Realtime events do not update the remote snapshot safely');
   if (!html.includes('cloudLoadPromise')) throw new Error('Concurrent shared-data loads are not deduplicated');
   if (!html.includes('authSubscription.unsubscribe()')) throw new Error('Old auth listeners are not cleaned up');
+  if (!html.includes("status==='CHANNEL_ERROR'||status==='TIMED_OUT'")) throw new Error('Realtime connection failures are not surfaced');
 });
 
 const failed = checks.filter((x) => !x.ok);
