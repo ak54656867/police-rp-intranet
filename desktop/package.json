@@ -1,0 +1,41 @@
+{
+  "name": "police-rp-intranet-desktop",
+  "version": "1.0.0",
+  "description": "Police RP organization management desktop app",
+  "main": "main.cjs",
+  "author": "Police RP",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "^36.3.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "kr.policerp.intranet",
+    "productName": "경찰 RP 인트라넷",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "renderer/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "경찰 RP 인트라넷"
+    }
+  }
+}
