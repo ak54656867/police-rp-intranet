@@ -254,6 +254,25 @@ alter table public.shared_records
     'notices','documents','audit','fines','departments','positions','orgPermissions'
   ));
 
+-- Enforce basic data invariants at the database layer, not only in forms.
+alter table public.profiles
+  drop constraint if exists profiles_permissions_array_check;
+alter table public.profiles
+  add constraint profiles_permissions_array_check
+  check (jsonb_typeof(permissions)='array');
+
+alter table public.leave_requests
+  drop constraint if exists leave_dates_order_check;
+alter table public.leave_requests
+  add constraint leave_dates_order_check
+  check (end_date >= start_date);
+
+alter table public.attendance
+  drop constraint if exists attendance_checkout_after_checkin;
+alter table public.attendance
+  add constraint attendance_checkout_after_checkin
+  check (check_out is null or check_out >= check_in);
+
 create or replace function public.can_access_intranet()
 returns boolean
 language sql
