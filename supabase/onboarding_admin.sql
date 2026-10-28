@@ -64,10 +64,8 @@ create trigger reopen_rejected_application_trigger
 drop policy if exists "profile self update application" on public.profiles;
 create policy "profile self update application"
   on public.profiles for update to authenticated
-  using (id=auth.uid() and role='officer'
-    and (status='pending' or status='rejected')
-    and (active=true or status='rejected'))
-  with check (id=auth.uid() and role='officer' and status='pending' and active=true);
+  using (id=auth.uid() and role='officer' and status in ('pending','rejected'))
+  with check (id=auth.uid() and role='officer' and status='pending' and active in (true,false));
 
 drop policy if exists "applicant update own pending profile" on public.profiles;
 drop policy if exists "profile self insert officer" on public.profiles;
