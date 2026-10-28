@@ -7,7 +7,23 @@ function toast(s){const t=$('#toast');t.textContent=s;t.classList.remove('hidden
 function msg(s){const n=$('#notice');n.textContent=s;n.classList.remove('hidden')}
 function clearMsg(){$('#notice').classList.add('hidden')}
 function safeBaseUrl(){if(!sbUrl||!sbKey)throw Error('Supabase 연결 설정이 필요합니다.');let u;try{u=new URL(sbUrl)}catch{throw Error('Supabase URL 형식이 올바르지 않습니다.')}if(u.protocol!=='https:'||!/^[a-z0-9-]+\.supabase\.co$/i.test(u.hostname)||u.username||u.password||u.pathname!=='/'||u.search||u.hash)throw Error('HTTPS Supabase 프로젝트 URL만 사용할 수 있습니다.');return u.origin}
-async function api(path,opts={}){const base=safeBaseUrl();const headers={apikey:sbKey,Authorization:'Bearer '+(session?.access_token||sbKey),'Content-Type':'application/json',...(opts.headers||{})};const res=await fetch(base+'/rest/v1/'+path,{...opts,headers});if(!res.ok){let t=await res.text();throw Error(t.slice(0,400)||res.statusText)}return res.status===204?null:res.json()}
+let refreshPromise=null;
+async function refreshSession(){
+ if(!session?.refresh_token||!session?.expires_at||session.expires_at*1000>Date.now()+60000)return;
+ if(refreshPromise)return refreshPromise;
+ refreshPromise=(async()=>{
+  const response=await fetch(safeBaseUrl()+'/auth/v1/token?grant_type=refresh_token',{method:'POST',headers:{apikey:sbKey,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:session.refresh_token})});
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok||!result.access_token||!result.refresh_token){
+   session=null;profile=null;localStorage.removeItem('sb_session');render();
+   throw Error(result.msg||result.message||'세션이 만료되었습니다. 다시 로그인해 주세요.');
+  }
+  if(!result.expires_at&&result.expires_in)result.expires_at=Math.floor(Date.now()/1000)+Number(result.expires_in);
+  session=result;localStorage.setItem('sb_session',JSON.stringify(session));
+ })();
+ try{await refreshPromise;}finally{refreshPromise=null;}
+}
+async function api(path,opts={}){const base=safeBaseUrl();await refreshSession();const headers={apikey:sbKey,Authorization:'Bearer '+(session?.access_token||sbKey),'Content-Type':'application/json',...(opts.headers||{})};const res=await fetch(base+'/rest/v1/'+path,{...opts,headers});if(!res.ok){let t=await res.text();throw Error(t.slice(0,400)||res.statusText)}return res.status===204?null:res.json()}
 async function auth(path,body){const r=await fetch(safeBaseUrl()+'/auth/v1/'+path,{method:'POST',headers:{apikey:sbKey,'Content-Type':'application/json'},body:JSON.stringify(body)});const j=await r.json();if(!r.ok)throw Error(j.msg||j.message||j.error_description||'인증 실패');return j}
 function setConnection(ok,text){$('#connectionText').textContent=text;$('.dot').style.background=ok?'var(--green)':'var(--orange)'}
 function go(p){page=p;searchTerm='';$$('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===p));$('#crumb').textContent=meta[p];$('#title').textContent=meta[p];render()}
