@@ -23,7 +23,7 @@ function save(){
    const previous=JSON.parse(lastSyncedSnapshot||'{}');
    await syncDiff(previous,target);
    lastSyncedSnapshot=JSON.stringify(target);
-  }).catch(e=>{console.error('Cloud sync failed',e);toast('클라우드 저장 실패: '+(e.message||'연결을 확인하세요.'));});
+  }).catch(e=>{console.error('Cloud sync failed',e);lastSavedSnapshot=JSON.stringify(lastSyncedSnapshot?JSON.parse(lastSyncedSnapshot):data);toast('클라우드 저장 실패: '+(e.message||'연결을 확인하세요. 다시 저장을 시도해 주세요.'));});
  }
  lastSavedSnapshot=next;
 }
