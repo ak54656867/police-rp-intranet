@@ -40,6 +40,14 @@ check('no metadata-based admin promotion', () => {
     }
   }
 });
+check('desktop runtime and security guards', () => {
+  const app = read('desktop/renderer/app.js');
+  if (!app.includes("/^[a-z0-9-]+\\.supabase\\.co$/i.test(u.hostname)")) throw new Error('Supabase URL validator is malformed');
+  if (!app.includes("profile?.display_name||session.user?.email")) throw new Error('Missing-profile render path is unsafe');
+  if (!app.includes('async function refreshSession()')) throw new Error('Desktop session refresh is missing');
+  const html = read('desktop/renderer/index.html');
+  if (!html.includes('Content-Security-Policy')) throw new Error('Desktop renderer CSP is missing');
+});
 check('shared-record role policies', () => {
   const sql = read('supabase/security_hardening.sql');
   for (const name of ['can_insert_shared_module', 'can_update_shared_module', 'can_delete_shared_module', 'can_access_intranet']) {
