@@ -58,11 +58,7 @@ async function loadSharedData(){
  cloudApplying=true;
  try{
   if(rows&&rows.length){
-   const demoNames=['김도윤','박서준','이하준','최유진'];
-   const demoIncidentTitles=['중앙역 인근 교통사고','상점 절도 신고'];
-   const stale=rows.filter(row=>(row.module==='personnel'&&demoNames.includes(row.payload?.name))||(row.module==='incidents'&&demoIncidentTitles.includes(row.payload?.title)));
-   for(const row of stale){const {error:cleanupError}=await supabaseClient.from('shared_records').delete().eq('module',row.module).eq('record_id',row.record_id);if(cleanupError)throw cleanupError;}
-   const cleanRows=rows.filter(row=>!stale.includes(row));
+   const cleanRows=rows;
    for(const module of cloudModules)data[module]=[];
    const listModules=['departments','positions','orgPermissions'],listPayloads={};
    for(const row of cleanRows){
