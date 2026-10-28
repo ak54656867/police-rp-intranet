@@ -195,12 +195,13 @@ alter table public.profiles
   add column if not exists roblox_username text,
   add column if not exists requested_rank text,
   add column if not exists requested_department text,
-  add column if not exists application_submitted boolean not null default false;
+  add column if not exists application_submitted boolean not null default false,
+  add column if not exists permissions jsonb not null default '[]'::jsonb;
 
 alter table public.profiles
   drop constraint if exists profiles_status_check;
 alter table public.profiles
-  add constraint profiles_status_check check (status in ('pending','approved','rejected'));
+  add constraint profiles_status_check check (status in ('pending','approved','rejected','suspended','dismissed'));
 
 -- A user may edit only their own pending application. The WITH CHECK prevents
 -- changing role, active, or status to bypass approval.
