@@ -74,18 +74,22 @@ check('assigned permission group enforcement', () => {
   const schema = read('supabase/schema.sql');
   const security = read('supabase/security_hardening.sql');
   if (!html.includes("function hasPermission(module,action)")) throw new Error('Frontend permission resolver missing');
+  if (/actions:\[[^\]]*'update'/.test(html)) throw new Error('Update permission must not appear in the permission matrix');
+  if (!html.includes('function canEditRecord(record)')) throw new Error('Owner-only record edit helper missing');
+  if (!html.includes('f.createdByUserId=authUser.id;f.userId=authUser.id;')) throw new Error('New records are missing owner identity');
+  if (!security.includes("module in ('incidents','fines') and payload->>'userId'=auth.uid()::text")) throw new Error('Incident/custody row owner gate missing');
   for (const code of ["has_org_module_permission(p_module, 'create')", "has_org_module_permission(p_module, 'update')", "has_org_module_permission(p_module, 'delete')"]) {
     if (!migration.includes(code)) throw new Error('Migration missing DB enforcement: ' + code);
     if (!schema.includes(code)) throw new Error('Schema missing DB enforcement: ' + code);
     if (!security.includes(code)) throw new Error('Security hardening SQL missing DB enforcement: ' + code);
   }
-  if (!html.includes("사건 수정 권한이 없습니다.")) throw new Error('Incident edit permission guard missing');
-  if (!html.includes("구금 기록 수정 권한이 없습니다.")) throw new Error('Custody edit permission guard missing');
+  if (!html.includes("본인이 작성한 사건만 수정할 수 있습니다.")) throw new Error('Incident owner-only edit guard missing');
+  if (!html.includes("본인이 작성한 구금 기록만 수정할 수 있습니다.")) throw new Error('Custody owner-only edit guard missing');
   if (!html.includes("구금 기록 삭제 권한이 없습니다.")) throw new Error('Custody delete permission guard missing');
   for (const file of [migration, schema, security]) {
     if (!file.includes('function public.can_read_shared_module(p_module text)')) throw new Error('Module-level read authorization function missing');
     if (!file.includes('create policy "shared records read by module permission"')) throw new Error('Module-level read policy missing');
-    if (!file.includes("granted.permission_code in (p_module || ':' || p_action, p_module || ':*', '*:*)")) throw new Error('Wildcard permission matching missing');
+    if (!file.includes("granted.permission_code in (p_module || ':' || p_action, p_module || ':*', '*:*')")) throw new Error('Wildcard permission matching missing');
   }
   if ((security.match(/create or replace function public\.can_insert_shared_module/g) || []).length !== 1) throw new Error('Duplicate shared-module insert authorization function');
 });
