@@ -272,13 +272,14 @@ async function handleModal(db: ReturnType<typeof createClient>, interaction: any
 
 async function processAction(db: ReturnType<typeof createClient>, interaction: any) {
   try {
+    const requiredGuild = Deno.env.get("DISCORD_GUILD_ID");
+    if (!requiredGuild || interaction.guild_id !== requiredGuild) {
+      return interactionResponse("이 명령은 인트라넷에 등록된 RP 서버에서만 사용할 수 있습니다.");
+    }
     if (interaction.type === 2) {
       const command = String(interaction.data?.name ?? "");
       const user = discordUser(interaction);
       if (!user?.id) return interactionResponse("Discord 서버에서 실행해 주세요.");
-
-      const requiredGuild = Deno.env.get("DISCORD_GUILD_ID");
-      if (requiredGuild && interaction.guild_id !== requiredGuild) return interactionResponse("등록된 RP 서버에서만 사용할 수 있습니다.");
 
       if (command === COMMANDS.attendanceIn || command === COMMANDS.attendanceOut) {
         const profile = await getAuthorizedProfile(db, user.id, "attendance");
