@@ -66,6 +66,22 @@ check('shared-record role policies', () => {
   if (!sql.includes('function public.protect_self_profile_update()')) throw new Error('Self-profile privilege protection missing');
   if (!sql.includes('Make this migration safely re-runnable')) throw new Error('Policy cleanup/idempotency guard missing');
 });
+check('assigned permission group enforcement', () => {
+  const html = read('site/index.html');
+  const migration = read('supabase/fix_permission_groups.sql');
+  const schema = read('supabase/schema.sql');
+  const security = read('supabase/security_hardening.sql');
+  if (!html.includes("function hasPermission(module,action)")) throw new Error('Frontend permission resolver missing');
+  for (const code of ["has_org_module_permission(p_module, 'create')", "has_org_module_permission(p_module, 'update')", "has_org_module_permission(p_module, 'delete')"]) {
+    if (!migration.includes(code)) throw new Error('Migration missing DB enforcement: ' + code);
+    if (!schema.includes(code)) throw new Error('Schema missing DB enforcement: ' + code);
+    if (!security.includes(code)) throw new Error('Security hardening SQL missing DB enforcement: ' + code);
+  }
+  if (!html.includes("사건 수정 권한이 없습니다.")) throw new Error('Incident edit permission guard missing');
+  if (!html.includes("구금 기록 수정 권한이 없습니다.")) throw new Error('Custody edit permission guard missing');
+  if (!html.includes("구금 기록 삭제 권한이 없습니다.")) throw new Error('Custody delete permission guard missing');
+  if (!migration.includes("create policy \"shared records read approved members\"")) throw new Error('Read policy does not enforce assigned groups');
+});
 check('realtime synchronization regression guards', () => {
   const html = read('site/index.html');
   if (!html.includes('next!==lastSyncedSnapshot')) throw new Error('Cloud retry does not compare against last synced snapshot');
