@@ -26,7 +26,10 @@ function isAnnouncementFlow(interaction: any) {
 }
 
 function isAllowedInteractionChannel(interaction: any, commandChannel: string | undefined) {
-  if (isAnnouncementFlow(interaction)) return ANNOUNCEMENT_CHANNEL_IDS.has(String(interaction.channel_id ?? ""));
+  if (isAnnouncementFlow(interaction)) {
+    return ANNOUNCEMENT_CHANNEL_IDS.has(String(interaction.channel_id ?? "")) ||
+      Boolean(commandChannel && interaction.channel_id === commandChannel);
+  }
   return Boolean(commandChannel && interaction.channel_id === commandChannel);
 }
 
@@ -81,36 +84,49 @@ function announcementDestinationPicker() {
   });
 }
 
-function announcementPostedResponse(title: string, body: string, author: string, destination: string, timestamp: string) {
+function announcementPostedResponse(destination: string) {
+  const label = destination === "important" ? "중요 공지" : "일반 공지";
+  return json({ type: 4, data: { content: "✅ " + label + " 채널에 공지를 게시했습니다.", flags: 64 } });
+}
+
+async function postAnnouncementWebhook(destination: string, title: string, body: string, author: string, timestamp: string) {
   const important = destination === "important";
-  return json({
-    type: 4,
-    data: {
+  const secretName = important ? "DISCORD_NOTICE_WEBHOOK_IMPORTANT" : "DISCORD_NOTICE_WEBHOOK_GENERAL";
+  const webhookValue = Deno.env.get(secretName) ?? "";
+  if (!webhookValue) throw new Error(secretName + " secret is not configured");
+  let webhookUrl: URL;
+  try {
+    webhookUrl = new URL(webhookValue);
+  } catch {
+    throw new Error("공지 채널 웹훅 주소가 올바르지 않습니다.");
+  }
+  if (webhookUrl.hostname !== "discord.com" || !webhookUrl.pathname.startsWith("/api/webhooks/")) {
+    throw new Error("공지 채널 웹훅 주소가 올바르지 않습니다.");
+  }
+  webhookUrl.searchParams.set("wait", "true");
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
       content: important ? "@everyone" : undefined,
       embeds: [{
         title: "📢 " + title,
+        url: "https://police-rp-intranet.aclclouds.online/",
         description: body,
         color: important ? 0xED4245 : 0x5865F2,
         author: { name: author },
-        fields: [{ name: "게시 위치", value: important ? "중요 공지" : "일반 공지", inline: true }],
         footer: { text: "경찰 RP 인트라넷" },
         timestamp,
-        url: "https://police-rp-intranet.aclclouds.online/",
-      }],
-      components: [{
-        type: 1,
-        components: [{
-          type: 2,
-          style: 5,
-          label: "인트라넷 공지 목록",
-          url: "https://police-rp-intranet.aclclouds.online/",
-        }],
       }],
       allowed_mentions: { parse: important ? ["everyone"] : [] },
-    },
+    }),
   });
+  if (!response.ok) {
+    console.error("Discord announcement webhook failed", response.status, await response.text());
+    throw new Error("Discord 공지 채널에 게시하지 못했습니다. 웹훅 연결을 확인해 주세요.");
+  }
+  return await response.json();
 }
-
 function modalResponse(customId: string, title: string, fields: Array<{ id: string; label: string; style?: number; required?: boolean; max?: number; placeholder?: string }>) {
   return json({
     type: 9,
@@ -288,7 +304,15 @@ async function handleModal(db: ReturnType<typeof createClient>, interaction: any
     };
     const { error } = await db.from("shared_records").insert({ module: "notices", record_id: id, payload: notice, updated_by: profile.id });
     if (error) throw error;
-    return announcementPostedResponse(title, body, author, destination, createdAt);
+    const posted = await postAnnouncementWebhook(destination, title, body, author, createdAt);
+    const { error: markerError } = await db.from("shared_records").insert({
+      module: "discord_announcement_sync",
+      record_id: id,
+      payload: { noticeId: id, discordMessageId: posted.id ?? null, destination, postedAt: createdAt, source: "Discord" },
+      updated_by: profile.id,
+    });
+    if (markerError) console.error("Announcement sync marker write failed", markerError);
+    return announcementPostedResponse(destination);
   }
   if (customId === "vehicle_spawn") {
     const profile = await getAuthorizedProfile(db, user.id, "assets");
@@ -394,6 +418,7 @@ async function sendDeferredResult(interaction: any, db: ReturnType<typeof create
   if (Array.isArray(resultData.embeds)) followup.embeds = resultData.embeds;
   if (Array.isArray(resultData.components)) followup.components = resultData.components;
   if (resultData.allowed_mentions) followup.allowed_mentions = resultData.allowed_mentions;
+  if (typeof resultData.flags === "number") followup.flags = resultData.flags;
   const applicationId = String(interaction.application_id ?? "");
   const token = String(interaction.token ?? "");
   if (!applicationId || !token) return;
@@ -468,48 +493,11 @@ async function publishSiteAnnouncement(request: Request, body: string) {
   if (markerLookupError) return json({ error: "Sync status lookup failed" }, 500);
   if (existingMarker) return json({ ok: true, alreadyPublished: true });
 
-  const important = category === "긴급" || notice.destination === "important";
-  const secretName = important ? "DISCORD_NOTICE_WEBHOOK_IMPORTANT" : "DISCORD_NOTICE_WEBHOOK_GENERAL";
-  const webhookValue = Deno.env.get(secretName) ?? "";
-  if (!webhookValue) return json({ error: secretName + " secret is not configured" }, 503);
-  let webhookUrl: URL;
-  try {
-    webhookUrl = new URL(webhookValue);
-  } catch {
-    return json({ error: "Invalid Discord webhook URL" }, 500);
-  }
-  if (webhookUrl.hostname !== "discord.com" || !webhookUrl.pathname.startsWith("/api/webhooks/")) {
-    return json({ error: "Invalid Discord webhook host" }, 500);
-  }
-  webhookUrl.searchParams.set("wait", "true");
-
+  const destination = category === "긴급" || notice.destination === "important" ? "important" : "general";
+  const secretName = destination === "important" ? "DISCORD_NOTICE_WEBHOOK_IMPORTANT" : "DISCORD_NOTICE_WEBHOOK_GENERAL";
   const author = String(notice.author ?? profile.roblox_username ?? profile.display_name ?? "인트라넷").slice(0, 80);
-  const postedAt = String(notice.date ?? new Date().toISOString());
-  const embed = {
-    title: "📢 " + title,
-    url: "https://police-rp-intranet.aclclouds.online/",
-    description: contentBody,
-    color: important ? 0xED4245 : 0x5865F2,
-    author: { name: author },
-    fields: [{ name: "게시 위치", value: important ? "중요 공지" : "일반 공지", inline: true }],
-    footer: { text: "경찰 RP 인트라넷" },
-    timestamp: postedAt,
-  };
   try {
-    const response = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        content: important ? "@everyone" : undefined,
-        embeds: [embed],
-        allowed_mentions: { parse: important ? ["everyone"] : [] },
-      }),
-    });
-    if (!response.ok) {
-      console.error("Discord announcement webhook failed", response.status, await response.text());
-      return json({ error: "Discord webhook rejected the announcement" }, 502);
-    }
-    const posted = await response.json();
+    const posted = await postAnnouncementWebhook(destination, title, contentBody, author, String(notice.date ?? new Date().toISOString()));
     const { error: markerError } = await db.from("shared_records").insert({
       module: markerModule,
       record_id: noticeId,
@@ -520,8 +508,9 @@ async function publishSiteAnnouncement(request: Request, body: string) {
     return json({ ok: true, discordMessageId: posted.id ?? null });
   } catch (error) {
     console.error("Discord announcement publish failed", error);
-    return json({ error: "Unable to reach Discord webhook" }, 502);
+    return json({ error: error instanceof Error ? error.message : "Unable to reach Discord webhook" }, 502);
   }
+}}
 }
 
 Deno.serve(async (request) => {
@@ -610,7 +599,7 @@ Deno.serve(async (request) => {
   const runtime = (globalThis as any).EdgeRuntime;
   if (runtime && typeof runtime.waitUntil === "function") {
     runtime.waitUntil(task);
-    return json({ type: 5 });
+    return json({ type: 5, data: isAnnouncementFlow(interaction) ? { flags: 64 } : undefined });
   }
 
   await task;
