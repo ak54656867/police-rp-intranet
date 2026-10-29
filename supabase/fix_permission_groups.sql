@@ -51,7 +51,7 @@ as $$
     cross join lateral jsonb_array_elements_text(coalesce(permission_group->'permissions', '[]'::jsonb)) granted(permission_code)
     where p.id = auth.uid()
       and permission_group->>'id' = assigned.group_id
-      and granted.permission_code in (p_module || ':' || p_action, p_module || ':*', '*:*)
+      and granted.permission_code in (p_module || ':' || p_action, p_module || ':*', '*:*')
   );
 $$;
 
