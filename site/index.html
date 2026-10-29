@@ -329,6 +329,7 @@ function modal(type){if(!authUser||!authProfile||!(authProfile.role==='admin'||(
  if(type!=='fine')log(labels[type]||'기록 등록',f.name||f.title||f.vehicleModel||f.code||'');
  save();closeModal();render();toast('기록을 등록했습니다.');
  if(type==='fine')await sendDiscordAudit('custody',{action:'구금 등록',subject:f.name,minutes:f.custodyMinutes,reason:f.reason,officer:f.officer,source:'인트라넷'});
+ if(type==='document'&&f.category==='인사보고')await sendDiscordAudit('personnel_report',{action:'인사보고 제출',subject:f.target,reason:f.reason,changes:f.changes,reportTitle:f.title,officer:currentOfficerName(),source:'보고서 제출'});
  if(type==='asset')await sendDiscordAudit('vehicle',{action:'차량 스폰',vehicleModel:f.vehicleModel,reason:f.reason,passengers:f.passengers,officer:f.spawnedBy,source:'인트라넷'});
  if(type==='person'&&authProfile?.role==='admin')await sendDiscordAudit('personnel',{action:'경찰관 등록',subject:f.name,rank:f.rank,department:f.dept,officer:currentOfficerName(),source:'인트라넷'});
  if(type==='notice'&&cloudReady&&supabaseClient&&authUser){
