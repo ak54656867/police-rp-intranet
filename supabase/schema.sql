@@ -436,7 +436,7 @@ create policy "shared records update by role"
         and payload->>'userId'=auth.uid()::text
       )
       or (module='leave' and payload->>'userId'=auth.uid()::text and payload->>'status'='申請')
-      or (module in ('documents','leave') and public.can_update_shared_module(module))
+      or (module in ('documents','leave') and (public.current_role() in ('admin','chief','department_head','hr_manager') or public.has_org_module_permission(module, 'approve')))
       or (
         module not in ('personnel','incidents','wanted','dispatch','assets','notices','documents','fines','leave')
         and public.can_update_shared_module(module)
@@ -457,7 +457,7 @@ create policy "shared records update by role"
         and payload->>'userId'=auth.uid()::text
       )
       or (module='leave' and payload->>'userId'=auth.uid()::text and payload->>'status'='申請')
-      or (module in ('documents','leave') and public.can_update_shared_module(module))
+      or (module in ('documents','leave') and (public.current_role() in ('admin','chief','department_head','hr_manager') or public.has_org_module_permission(module, 'approve')))
       or (
         module not in ('personnel','incidents','wanted','dispatch','assets','notices','documents','fines','leave')
         and public.can_update_shared_module(module)
