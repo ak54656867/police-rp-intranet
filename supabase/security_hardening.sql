@@ -626,4 +626,32 @@ drop trigger if exists on_auth_user_created_profile on auth.users;
 create trigger on_auth_user_created_profile
   after insert on auth.users
   for each row execute function public.handle_new_auth_user();
+
+-- Security access telemetry. Only the Edge Function using the service role can insert;
+-- ordinary authenticated clients can only read rows if they are administrators.
+create table if not exists public.security_events (
+  id uuid primary key default gen_random_uuid(),
+  actor_id uuid references auth.users(id) on delete set null,
+  event_type text not null default 'session_start',
+  ip_address text,
+  user_agent text,
+  path text,
+  created_at timestamptz not null default now()
+);
+create index if not exists security_events_created_at_idx
+  on public.security_events (created_at desc);
+create index if not exists security_events_actor_id_idx
+  on public.security_events (actor_id, created_at desc);
+alter table public.security_events enable row level security;
+drop policy if exists "security events read admin only" on public.security_events;
+create policy "security events read admin only"
+  on public.security_events for select to authenticated
+  using (exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and p.role = 'admin'
+  ));
+revoke all on public.security_events from anon;
+revoke insert, update, delete on public.security_events from authenticated;
+grant select on public.security_events to authenticated;
+
 commit;
