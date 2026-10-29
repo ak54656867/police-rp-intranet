@@ -127,6 +127,33 @@ async function postAnnouncementWebhook(destination: string, title: string, body:
   }
   return await response.json();
 }
+async function postAuditWebhook(eventType: "custody" | "vehicle" | "personnel", title: string, fields: Array<{ name: string; value: unknown }>) {
+  const secrets = { custody: "DISCORD_CUSTODY_WEBHOOK", vehicle: "DISCORD_VEHICLE_WEBHOOK", personnel: "DISCORD_PERSONNEL_WEBHOOK" };
+  const secret = secrets[eventType];
+  const value = Deno.env.get(secret) ?? "";
+  if (!value) { console.warn(secret + " secret is not configured; skipping Discord audit webhook"); return; }
+  try {
+    const url = new URL(value);
+    if (url.hostname !== "discord.com" || !url.pathname.startsWith("/api/webhooks/")) throw new Error("Invalid Discord webhook URL");
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        embeds: [{
+          title,
+          color: eventType === "custody" ? 0xC0392B : eventType === "vehicle" ? 0x2980B9 : 0x8E44AD,
+          fields: fields.slice(0, 10).map(field => ({ name: field.name.slice(0, 256), value: String(field.value ?? "—").slice(0, 1024) || "—", inline: false })),
+          footer: { text: "경찰 RP 인트라넷 · Discord 기록" },
+          timestamp: new Date().toISOString(),
+        }],
+        allowed_mentions: { parse: [] },
+      }),
+    });
+    if (!response.ok) console.error("Discord audit webhook failed", eventType, response.status, await response.text());
+  } catch (error) {
+    console.error("Discord audit webhook failed", eventType, error);
+  }
+}
 function modalResponse(customId: string, title: string, fields: Array<{ id: string; label: string; style?: number; required?: boolean; max?: number; placeholder?: string }>) {
   return json({
     type: 9,
@@ -332,6 +359,12 @@ async function handleModal(db: ReturnType<typeof createClient>, interaction: any
       createdAt: new Date().toISOString(),
       source: "Discord",
     }, "Discord 차량 스폰 등록");
+    await postAuditWebhook("vehicle", "차량 스폰 로그", [
+      { name: "처리", value: "차량 스폰" }, { name: "차량 모델", value: vehicleModel },
+      { name: "스폰 사유", value: reason }, { name: "탑승자", value: passengers || "—" },
+      { name: "담당자", value: profile.roblox_username }, { name: "Discord", value: discordLabel(user) },
+      { name: "기록 경로", value: "Discord 봇" },
+    ]);
     return interactionResponse("차량 스폰 기록을 등록했습니다: " + vehicleModel);
   }
 
@@ -351,6 +384,11 @@ async function handleModal(db: ReturnType<typeof createClient>, interaction: any
       createdAt: new Date().toISOString(),
       source: "Discord",
     }, "Discord 차량 삭제 기록");
+    await postAuditWebhook("vehicle", "차량 스폰 로그", [
+      { name: "처리", value: "차량 삭제 기록" }, { name: "차량 모델", value: vehicleModel },
+      { name: "삭제 사유", value: reason }, { name: "담당자", value: profile.roblox_username },
+      { name: "Discord", value: discordLabel(user) }, { name: "기록 경로", value: "Discord 봇" },
+    ]);
     return interactionResponse("차량 삭제 기록을 남겼습니다: " + vehicleModel);
   }
 
@@ -373,6 +411,12 @@ async function handleModal(db: ReturnType<typeof createClient>, interaction: any
       status: "확인",
       source: "Discord",
     }, "Discord 구금 기록 등록");
+    await postAuditWebhook("custody", "구금 기록", [
+      { name: "처리", value: "구금 등록" }, { name: "대상자", value: name },
+      { name: "구금 시간", value: custodyMinutes + "분" }, { name: "구금 사유", value: reason },
+      { name: "담당자", value: profile.roblox_username }, { name: "Discord", value: discordLabel(user) },
+      { name: "기록 경로", value: "Discord 봇" },
+    ]);
     return interactionResponse("구금 기록을 등록했습니다: " + name + " · " + custodyMinutes + "분");
   }
 
