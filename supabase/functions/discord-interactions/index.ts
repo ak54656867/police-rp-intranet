@@ -478,17 +478,14 @@ async function sendDeferredResult(interaction: any, db: ReturnType<typeof create
 async function publishAutomatedPatchNotes(request: Request, body: string) {
   const expectedSecret = Deno.env.get("PATCH_NOTES_SECRET") ?? "";
   const suppliedSecret = request.headers.get("x-patch-notes-secret") ?? "";
-  if (!expectedSecret || suppliedSecret.length !== expectedSecret.length ||
-      !crypto.subtle.timingSafeEqual) {
-    // Use a constant-time comparison where supported; never disclose secret values.
-    if (!expectedSecret || suppliedSecret !== expectedSecret) return json({ error: "Unauthorized" }, 401);
-  } else {
-    const a = new TextEncoder().encode(expectedSecret);
-    const b = new TextEncoder().encode(suppliedSecret);
-    let mismatch = 0;
-    for (let i = 0; i < a.length; i++) mismatch |= a[i] ^ b[i];
-    if (mismatch !== 0) return json({ error: "Unauthorized" }, 401);
+  if (!expectedSecret || suppliedSecret.length !== expectedSecret.length) {
+    return json({ error: "Unauthorized" }, 401);
   }
+  const expectedBytes = new TextEncoder().encode(expectedSecret);
+  const suppliedBytes = new TextEncoder().encode(suppliedSecret);
+  let secretMismatch = 0;
+  for (let i = 0; i < expectedBytes.length; i++) secretMismatch |= expectedBytes[i] ^ suppliedBytes[i];
+  if (secretMismatch !== 0) return json({ error: "Unauthorized" }, 401);
 
   let input: any;
   try { input = JSON.parse(body); } catch { return json({ error: "Invalid JSON body" }, 400); }
