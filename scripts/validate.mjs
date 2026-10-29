@@ -85,7 +85,7 @@ check('assigned permission group enforcement', () => {
     if (!file.includes('create policy "shared records read by module permission"')) throw new Error('Module-level read policy missing');
     if (!file.includes("granted.permission_code in (p_module || ':' || p_action, p_module || ':*', '*:*)")) throw new Error('Wildcard permission matching missing');
   }
-  if ((security.match(/create or replace function public\\.can_insert_shared_module/g) || []).length !== 1) throw new Error('Duplicate shared-module insert authorization function');
+  if ((security.match(/create or replace function public\.can_insert_shared_module/g) || []).length !== 1) throw new Error('Duplicate shared-module insert authorization function');
 });
 check('realtime synchronization regression guards', () => {
   const html = read('site/index.html');
