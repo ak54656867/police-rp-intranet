@@ -118,7 +118,7 @@ grant select,insert,update,delete on public.profiles,public.personnel,public.att
 -- Each row is one record, so concurrent users can update different records without
 -- overwriting the entire workspace snapshot.
 create table if not exists public.shared_records (
-  module text not null check (module in ('personnel','attendance','incidents','wanted','dispatch','leave','assets','notices','documents','audit')),
+  module text not null check (module in ('personnel','attendance','incidents','wanted','dispatch','leave','assets','notices','documents','audit','fines','departments','positions','orgPermissions','permissionSets')),
   record_id text not null,
   payload jsonb not null,
   updated_by uuid references auth.users(id) on delete set null,
@@ -653,6 +653,13 @@ alter table public.profiles
   add column if not exists reviewed_by uuid references auth.users(id) on delete set null,
   add column if not exists reviewed_by_discord text,
   add column if not exists reviewed_at timestamptz;
+
+-- Organization lists and permission groups are stored as shared_records list rows.
+alter table public.shared_records
+  drop constraint if exists shared_records_module_check;
+alter table public.shared_records
+  add constraint shared_records_module_check
+  check (module in ('personnel','attendance','incidents','wanted','dispatch','leave','assets','notices','documents','audit','fines','departments','positions','orgPermissions','permissionSets'));
 
 -- Applicants may update their own application identity and requested placement, but
 -- cannot change their assigned rank, department, position, role, approval, or access.
