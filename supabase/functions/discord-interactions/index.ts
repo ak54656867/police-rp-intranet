@@ -510,7 +510,6 @@ async function publishSiteAnnouncement(request: Request, body: string) {
     console.error("Discord announcement publish failed", error);
     return json({ error: error instanceof Error ? error.message : "Unable to reach Discord webhook" }, 502);
   }
-}}
 }
 
 Deno.serve(async (request) => {
