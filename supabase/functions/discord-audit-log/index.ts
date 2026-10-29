@@ -26,10 +26,15 @@ async function sendWebhook(eventType: string, details: Record<string, unknown>) 
   if (url.hostname !== "discord.com" || !url.pathname.startsWith("/api/webhooks/")) {
     throw new Error(selected.secret + " must be a Discord webhook URL");
   }
+  const labels: Record<string, string> = {
+    action: "처리", subject: "대상자", minutes: "구금 시간", reason: "사유",
+    officer: "담당자", source: "기록 경로", vehicleModel: "차량 모델",
+    passengers: "탑승자", rank: "계급", department: "부서", position: "직책",
+  };
   const fieldEntries = Object.entries(details).filter(([key, value]) =>
     value !== undefined && value !== null && String(value).trim() !== ""
   ).slice(0, 12).map(([name, value]) => ({
-    name: clean(name, 256),
+    name: clean(labels[name] ?? name, 256),
     value: clean(value, 1024),
     inline: ["action", "minutes", "rank", "department"].includes(name),
   }));
