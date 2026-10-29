@@ -19,8 +19,10 @@ const COMMANDS = {
 const ANNOUNCEMENT_CHANNEL_IDS = new Set(["1563868823235469346", "1563868823235469347"]);
 
 function isAnnouncementFlow(interaction: any) {
+  const customId = String(interaction.data?.custom_id ?? "");
   return (interaction.type === 2 && interaction.data?.name === COMMANDS.announcement) ||
-    (interaction.type === 5 && interaction.data?.custom_id === "announcement_create");
+    (interaction.type === 3 && customId.startsWith("announcement_destination:")) ||
+    (interaction.type === 5 && customId.startsWith("announcement_create:"));
 }
 
 function isAllowedInteractionChannel(interaction: any, commandChannel: string | undefined) {
@@ -60,6 +62,53 @@ async function verifyDiscordRequest(request: Request, body: string): Promise<boo
 
 function interactionResponse(content: string) {
   return json({ type: 4, data: { content } });
+}
+
+function announcementDestinationPicker() {
+  return json({
+    type: 4,
+    data: {
+      content: "공지 게시 위치를 선택해 주세요.",
+      flags: 64,
+      components: [{
+        type: 1,
+        components: [
+          { type: 2, style: 1, label: "일반 공지", custom_id: "announcement_destination:general" },
+          { type: 2, style: 4, label: "중요 공지 · 전체 멘션", custom_id: "announcement_destination:important" },
+        ],
+      }],
+    },
+  });
+}
+
+function announcementPostedResponse(title: string, body: string, author: string, destination: string, timestamp: string) {
+  const important = destination === "important";
+  return json({
+    type: 4,
+    data: {
+      content: important ? "@everyone" : undefined,
+      embeds: [{
+        title: "📢 " + title,
+        description: body,
+        color: important ? 0xED4245 : 0x5865F2,
+        author: { name: author },
+        fields: [{ name: "게시 위치", value: important ? "중요 공지" : "일반 공지", inline: true }],
+        footer: { text: "경찰 RP 인트라넷" },
+        timestamp,
+        url: "https://police-rp-intranet.aclclouds.online/",
+      }],
+      components: [{
+        type: 1,
+        components: [{
+          type: 2,
+          style: 5,
+          label: "인트라넷 공지 목록",
+          url: "https://police-rp-intranet.aclclouds.online/",
+        }],
+      }],
+      allowed_mentions: { parse: important ? ["everyone"] : [] },
+    },
+  });
 }
 
 function modalResponse(customId: string, title: string, fields: Array<{ id: string; label: string; style?: number; required?: boolean; max?: number; placeholder?: string }>) {
@@ -219,27 +268,28 @@ async function handleModal(db: ReturnType<typeof createClient>, interaction: any
   const customId = String(interaction.data?.custom_id ?? "");
   const values = modalValues(interaction.data?.components);
 
-  if (customId === "announcement_create") {
+  if (customId.startsWith("announcement_create:")) {
     const profile = await getAuthorizedProfile(db, user.id, "notices");
+    const destination = customId.endsWith(":important") ? "important" : "general";
     const title = values.title ?? "";
-    const category = values.category ?? "";
     const body = values.body ?? "";
-    const allowedCategories = ["공지", "인사", "지시", "공문", "긴급"];
-    if (!title || title.length > 100 || !allowedCategories.includes(category) || !body || body.length > 1400) {
-      return interactionResponse("제목·분류·내용을 확인해 주세요. 분류는 공지, 인사, 지시, 공문, 긴급 중 하나여야 합니다.");
+    if (!title || title.length > 100 || !body || body.length > 1400) {
+      return interactionResponse("제목과 내용을 확인해 주세요.");
     }
     const id = crypto.randomUUID();
+    const createdAt = new Date().toISOString();
+    const category = destination === "important" ? "긴급" : "공지";
+    const author = profile.roblox_username || profile.display_name || discordLabel(user);
     const notice = {
-      id, title, category, body,
-      author: profile.roblox_username || profile.display_name || discordLabel(user),
-      date: new Date().toISOString(), source: "Discord",
+      id, title, category, destination, body,
+      author,
+      date: createdAt, source: "Discord",
       discord_id: user.id, discord_username: discordLabel(user),
     };
     const { error } = await db.from("shared_records").insert({ module: "notices", record_id: id, payload: notice, updated_by: profile.id });
     if (error) throw error;
-    return interactionResponse(`📢 **${title}**\n분류: ${category}\n${body}\n\n작성: ${notice.author}\n[인트라넷 공지 목록](https://police-rp-intranet.aclclouds.online/)`);
+    return announcementPostedResponse(title, body, author, destination, createdAt);
   }
-
   if (customId === "vehicle_spawn") {
     const profile = await getAuthorizedProfile(db, user.id, "assets");
     const vehicleModel = values.vehicle_model ?? "";
@@ -338,7 +388,12 @@ async function processAction(db: ReturnType<typeof createClient>, interaction: a
 async function sendDeferredResult(interaction: any, db: ReturnType<typeof createClient>) {
   const result = await processAction(db, interaction);
   const resultBody = await result.json();
-  const content = String(resultBody?.data?.content ?? "요청을 처리했습니다.");
+  const resultData = resultBody?.data ?? {};
+  const followup: Record<string, unknown> = {};
+  if (typeof resultData.content === "string") followup.content = resultData.content;
+  if (Array.isArray(resultData.embeds)) followup.embeds = resultData.embeds;
+  if (Array.isArray(resultData.components)) followup.components = resultData.components;
+  if (resultData.allowed_mentions) followup.allowed_mentions = resultData.allowed_mentions;
   const applicationId = String(interaction.application_id ?? "");
   const token = String(interaction.token ?? "");
   if (!applicationId || !token) return;
@@ -346,7 +401,7 @@ async function sendDeferredResult(interaction: any, db: ReturnType<typeof create
   const response = await fetch(`https://discord.com/api/v10/webhooks/${applicationId}/${token}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(followup),
   });
   if (!response.ok) console.error("Discord follow-up failed", response.status, await response.text());
 }
@@ -413,7 +468,8 @@ async function publishSiteAnnouncement(request: Request, body: string) {
   if (markerLookupError) return json({ error: "Sync status lookup failed" }, 500);
   if (existingMarker) return json({ ok: true, alreadyPublished: true });
 
-  const secretName = category === "긴급" ? "DISCORD_NOTICE_WEBHOOK_IMPORTANT" : "DISCORD_NOTICE_WEBHOOK_GENERAL";
+  const important = category === "긴급" || notice.destination === "important";
+  const secretName = important ? "DISCORD_NOTICE_WEBHOOK_IMPORTANT" : "DISCORD_NOTICE_WEBHOOK_GENERAL";
   const webhookValue = Deno.env.get(secretName) ?? "";
   if (!webhookValue) return json({ error: secretName + " secret is not configured" }, 503);
   let webhookUrl: URL;
@@ -428,12 +484,26 @@ async function publishSiteAnnouncement(request: Request, body: string) {
   webhookUrl.searchParams.set("wait", "true");
 
   const author = String(notice.author ?? profile.roblox_username ?? profile.display_name ?? "인트라넷").slice(0, 80);
-  const message = `📢 **${title}**\n**분류:** ${category}\n${contentBody}\n\n작성: ${author}\nhttps://police-rp-intranet.aclclouds.online/`;
+  const postedAt = String(notice.date ?? new Date().toISOString());
+  const embed = {
+    title: "📢 " + title,
+    url: "https://police-rp-intranet.aclclouds.online/",
+    description: contentBody,
+    color: important ? 0xED4245 : 0x5865F2,
+    author: { name: author },
+    fields: [{ name: "게시 위치", value: important ? "중요 공지" : "일반 공지", inline: true }],
+    footer: { text: "경찰 RP 인트라넷" },
+    timestamp: postedAt,
+  };
   try {
     const response = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: message.slice(0, 1950), allowed_mentions: { parse: [] } }),
+      body: JSON.stringify({
+        content: important ? "@everyone" : undefined,
+        embeds: [embed],
+        allowed_mentions: { parse: important ? ["everyone"] : [] },
+      }),
     });
     if (!response.ok) {
       console.error("Discord announcement webhook failed", response.status, await response.text());
@@ -492,11 +562,7 @@ Deno.serve(async (request) => {
     }
 
     if (command === COMMANDS.announcement) {
-      return modalResponse("announcement_create", "공지 작성", [
-        { id: "title", label: "제목", max: 100, placeholder: "공지 제목" },
-        { id: "category", label: "분류 (공지/인사/지시/공문/긴급)", max: 12, placeholder: "공지" },
-        { id: "body", label: "내용", style: 2, max: 1400, placeholder: "공지 내용을 입력하세요" },
-      ]);
+      return announcementDestinationPicker();
     }
 
     if (command === COMMANDS.vehicleSpawn) {
@@ -525,6 +591,15 @@ Deno.serve(async (request) => {
     if (command !== COMMANDS.attendanceIn && command !== COMMANDS.attendanceOut) {
       return interactionResponse("지원하지 않는 명령입니다.");
     }
+  } else if (interaction.type === 3) {
+    const customId = String(interaction.data?.custom_id ?? "");
+    const destination = customId === "announcement_destination:important" ? "important" :
+      customId === "announcement_destination:general" ? "general" : "";
+    if (!destination) return interactionResponse("공지 위치 선택을 다시 실행해 주세요.");
+    return modalResponse("announcement_create:" + destination, "공지 작성", [
+      { id: "title", label: "제목", max: 100, placeholder: "공지 제목" },
+      { id: "body", label: "내용", style: 2, max: 1400, placeholder: "공지 내용을 입력하세요" },
+    ]);
   } else if (interaction.type !== 5) {
     return interactionResponse("지원하지 않는 Discord 입력 형식입니다.");
   }
