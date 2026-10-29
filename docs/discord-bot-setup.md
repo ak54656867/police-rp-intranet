@@ -48,11 +48,10 @@ supabase functions deploy discord-interactions --no-verify-jwt
 
 ```sh
 supabase secrets set DISCORD_PUBLIC_KEY=개발자포털에서복사한PublicKey
-supabase secrets set SUPABASE_SERVICE_ROLE_KEY=Supabase서비스역할키
 supabase secrets set DISCORD_GUILD_ID=디스코드서버ID
 ```
 
-`SUPABASE_URL`은 Supabase Edge Functions에 기본 제공됩니다. **Service role key와 Discord bot token은 웹사이트 코드, Discord 채팅, GitHub에 올리지 마세요.** 이 기능은 Interaction Endpoint만 사용하므로 봇 토큰은 필요하지 않습니다.
+`SUPABASE_URL`과 `SUPABASE_SERVICE_ROLE_KEY`는 Supabase Edge Functions에 기본 제공됩니다. 함수 내부에서만 DB 쓰기에 사용됩니다. **Service role key와 Discord bot token은 웹사이트 코드, Discord 채팅, GitHub에 올리지 마세요.** 이 기능은 실행 자체에는 봇 토큰이 필요 없고, 명령 등록 스크립트 실행 때만 필요합니다.
 
 ## 4. 명령 등록
 
