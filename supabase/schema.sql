@@ -431,15 +431,19 @@ create policy "shared records update by role"
   using (
     public.can_access_intranet()
     and (
-      (module in ('incidents','fines') and payload->>'userId'=auth.uid()::text)
+      (
+        module in ('personnel','incidents','wanted','dispatch','assets','notices','documents','fines')
+        and payload->>'userId'=auth.uid()::text
+      )
+      or (module='leave' and payload->>'userId'=auth.uid()::text and payload->>'status'='申請')
+      or (module in ('documents','leave') and public.can_update_shared_module(module))
       or (
-        module not in ('incidents','fines')
+        module not in ('personnel','incidents','wanted','dispatch','assets','notices','documents','fines','leave')
         and public.can_update_shared_module(module)
         and (
-          module not in ('attendance','leave')
+          module <> 'attendance'
           or public.current_role() in ('admin','chief','department_head','hr_manager')
           or (module='attendance' and payload->>'userId'=auth.uid()::text)
-          or (module='leave' and payload->>'userId'=auth.uid()::text and payload->>'status'='申請')
         )
       )
     )
@@ -448,15 +452,19 @@ create policy "shared records update by role"
     public.can_access_intranet()
     and updated_by=auth.uid()
     and (
-      (module in ('incidents','fines') and payload->>'userId'=auth.uid()::text)
+      (
+        module in ('personnel','incidents','wanted','dispatch','assets','notices','documents','fines')
+        and payload->>'userId'=auth.uid()::text
+      )
+      or (module='leave' and payload->>'userId'=auth.uid()::text and payload->>'status'='申請')
+      or (module in ('documents','leave') and public.can_update_shared_module(module))
       or (
-        module not in ('incidents','fines')
+        module not in ('personnel','incidents','wanted','dispatch','assets','notices','documents','fines','leave')
         and public.can_update_shared_module(module)
         and (
-          module not in ('attendance','leave')
+          module <> 'attendance'
           or public.current_role() in ('admin','chief','department_head','hr_manager')
           or (module='attendance' and payload->>'userId'=auth.uid()::text)
-          or (module='leave' and payload->>'userId'=auth.uid()::text and payload->>'status'='申請')
         )
       )
     )
