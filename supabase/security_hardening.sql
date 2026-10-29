@@ -2,6 +2,27 @@
 -- Re-runnable migration for an existing Supabase project; review before applying.
 begin;
 
+-- Remove unknown legacy policies from every table hardened below. PostgreSQL ORs
+-- permissive policies together, so a stale broad policy would bypass new rules.
+do $hardening_policy_cleanup$
+declare policy_row record;
+begin
+  for policy_row in
+    select schemaname, tablename, policyname
+    from pg_policies
+    where schemaname = 'public'
+      and tablename in (
+        'profiles','personnel','attendance','incidents','wanted_persons',
+        'dispatches','leave_requests','assets','notices','audit_logs',
+        'org_units','documents'
+      )
+  loop
+    execute format('drop policy if exists %I on %I.%I',
+      policy_row.policyname, policy_row.schemaname, policy_row.tablename);
+  end loop;
+end;
+$hardening_policy_cleanup$;
+
 -- Make this migration safely re-runnable by removing its own policies first.
 drop policy if exists "profile read own or approved managers" on public.profiles;
 drop policy if exists "shared records read approved members" on public.shared_records;
@@ -176,6 +197,12 @@ create policy "profile read own or approved managers"
     id=auth.uid()
     or (public.can_access_intranet() and public.is_staff_manager())
   );
+
+drop policy if exists "profile update by administrator" on public.profiles;
+create policy "profile update by administrator"
+  on public.profiles for update to authenticated
+  using (public.can_access_intranet() and public.current_role() = 'admin')
+  with check (public.can_access_intranet() and public.current_role() = 'admin');
 
 create or replace function public.has_assigned_permission_set()
 returns boolean
