@@ -108,7 +108,7 @@ async function postAnnouncementWebhook(destination: string, title: string, body:
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      content: important ? "@everyone" : undefined,
+      content: important ? "@everyone" : "@here",
       embeds: [{
         title: "📢 " + title,
         url: "https://police-rp-intranet.aclclouds.online/",
@@ -118,7 +118,7 @@ async function postAnnouncementWebhook(destination: string, title: string, body:
         footer: { text: "경찰 RP 인트라넷" },
         timestamp,
       }],
-      allowed_mentions: { parse: important ? ["everyone"] : [] },
+      allowed_mentions: { parse: important ? ["everyone"] : ["here"] },
     }),
   });
   if (!response.ok) {
