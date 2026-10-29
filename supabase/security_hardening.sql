@@ -288,12 +288,15 @@ as $$
     when p_module = 'audit'
       then public.current_role() in ('chief','department_head','hr_manager')
         or public.has_org_module_permission(p_module, 'read')
+        or public.has_org_module_permission(p_module, 'approve')
     when p_module = 'personnel'
       then public.current_role() in ('chief','department_head','hr_manager')
         or public.has_org_module_permission(p_module, 'read')
+        or public.has_org_module_permission(p_module, 'approve')
     when p_module in ('departments','positions','orgPermissions','permissionSets') then true
     when public.has_assigned_permission_set()
       then public.has_org_module_permission(p_module, 'read')
+        or public.has_org_module_permission(p_module, 'approve')
     when public.current_role() in ('chief','department_head','hr_manager') then true
     when public.current_role() = 'officer'
       then p_module in ('attendance','incidents','wanted','dispatch','leave','assets','notices','documents','fines')
@@ -313,6 +316,7 @@ grant execute on function public.has_org_module_permission(text,text) to authent
 
 
 revoke all on function public.can_access_intranet() from public;
+revoke all on function public.can_read_shared_module(text) from public;
 revoke all on function public.can_read_shared_module(text) from public;
 revoke all on function public.can_insert_shared_module(text) from public;
 revoke all on function public.can_update_shared_module(text) from public;
