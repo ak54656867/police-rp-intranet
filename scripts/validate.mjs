@@ -65,6 +65,8 @@ check('shared-record role policies', () => {
   }
   if (!sql.includes('function public.protect_self_profile_update()')) throw new Error('Self-profile privilege protection missing');
   if (!sql.includes('Make this migration safely re-runnable')) throw new Error('Policy cleanup/idempotency guard missing');
+  if (!sql.includes('hardening_policy_cleanup')) throw new Error('Unknown legacy RLS policies are not cleared');
+  if (!sql.includes('create policy "profile update by administrator"')) throw new Error('Administrator profile-management policy missing');
 });
 check('assigned permission group enforcement', () => {
   const html = read('site/index.html');
