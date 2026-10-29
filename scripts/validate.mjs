@@ -77,7 +77,7 @@ check('assigned permission group enforcement', () => {
   if (/actions:\[[^\]]*'update'/.test(html)) throw new Error('Update permission must not appear in the permission matrix');
   if (!html.includes('function canEditRecord(record)')) throw new Error('Owner-only record edit helper missing');
   if (!html.includes('f.createdByUserId=authUser.id;f.userId=authUser.id;')) throw new Error('New records are missing owner identity');
-  if (!security.includes("module in ('incidents','fines') and payload->>'userId'=auth.uid()::text")) throw new Error('Incident/custody row owner gate missing');
+  if (!security.includes("module in ('personnel','incidents','wanted','dispatch','assets','notices','documents','fines')") || !security.includes("payload->>'userId'=auth.uid()::text")) throw new Error('Owner-only row update gate missing');
   for (const code of ["has_org_module_permission(p_module, 'create')", "has_org_module_permission(p_module, 'update')", "has_org_module_permission(p_module, 'delete')"]) {
     if (!migration.includes(code)) throw new Error('Migration missing DB enforcement: ' + code);
     if (!schema.includes(code)) throw new Error('Schema missing DB enforcement: ' + code);
