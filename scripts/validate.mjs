@@ -80,7 +80,12 @@ check('assigned permission group enforcement', () => {
   if (!html.includes("사건 수정 권한이 없습니다.")) throw new Error('Incident edit permission guard missing');
   if (!html.includes("구금 기록 수정 권한이 없습니다.")) throw new Error('Custody edit permission guard missing');
   if (!html.includes("구금 기록 삭제 권한이 없습니다.")) throw new Error('Custody delete permission guard missing');
-  if (!migration.includes("create policy \"shared records read approved members\"")) throw new Error('Read policy does not enforce assigned groups');
+  for (const file of [migration, schema, security]) {
+    if (!file.includes('function public.can_read_shared_module(p_module text)')) throw new Error('Module-level read authorization function missing');
+    if (!file.includes('create policy "shared records read by module permission"')) throw new Error('Module-level read policy missing');
+    if (!file.includes("granted.permission_code in (p_module || ':' || p_action, p_module || ':*', '*:*)")) throw new Error('Wildcard permission matching missing');
+  }
+  if ((security.match(/create or replace function public\\.can_insert_shared_module/g) || []).length !== 1) throw new Error('Duplicate shared-module insert authorization function');
 });
 check('realtime synchronization regression guards', () => {
   const html = read('site/index.html');
