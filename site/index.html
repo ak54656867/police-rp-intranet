@@ -324,7 +324,7 @@ function updateAuthUI(){
  let adminBtn=document.getElementById('applicationsBtn');
  if(authUser){
   const admin=authProfile?.role==='admin';
-  name.textContent=admin?(authProfile?.roblox_username?.trim()||authProfile?.display_name||authUser.user_metadata?.global_name||authUser.user_metadata?.full_name||authUser.user_metadata?.name||authUser.email||'Discord 사용자'):(authProfile?.display_name||authUser.user_metadata?.global_name||authUser.user_metadata?.full_name||authUser.user_metadata?.name||authUser.email||'Discord 사용자');
+  name.textContent=admin?(authProfile?.roblox_username?.trim()||authUser.user_metadata?.global_name||authUser.user_metadata?.full_name||authUser.user_metadata?.name||authUser.email||'Discord 사용자'):(authProfile?.display_name||authUser.user_metadata?.global_name||authUser.user_metadata?.full_name||authUser.user_metadata?.name||authUser.email||'Discord 사용자');
   meta.textContent=admin?'생활안전교통국 · 최고 관리자':authProfile?.status==='approved'?((authProfile.rank||'순경')+' · '+(authProfile.department||'미배정')):'가입 신청 대기';
   avatar.textContent=(name.textContent||'D').slice(0,1);btn.textContent='로그아웃';tag.textContent=admin?'SUPER ADMIN':authProfile?.status==='approved'?'AUTHENTICATED':'PENDING';
   if(admin&&!adminBtn){adminBtn=document.createElement('button');adminBtn.id='applicationsBtn';adminBtn.className='btn';adminBtn.textContent='가입 신청 관리';adminBtn.onclick=openApplications;document.querySelector('.top-right').insertBefore(adminBtn,tag);}
