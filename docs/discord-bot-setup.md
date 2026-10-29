@@ -34,7 +34,11 @@ order by created_at;
 
    `https://lnauhbnisreigaqoeabq.supabase.co/functions/v1/discord-interactions`
 
-Discord 서버에 앱을 설치할 때는 Guild Install의 설치 링크를 사용합니다. 서버 ID는 Discord 개발자 모드에서 확인할 수 있습니다.
+Developer Portal의 설치 설정은 Guild Install만 켜고 기본 범위는 `applications.commands`로 저장했습니다. 아래 링크는 지정 서버를 미리 선택하고 서버 선택 변경을 막습니다. 설치 권한이 있는 계정으로 열어 주세요.
+
+[경찰 RP 서버에 앱 추가](https://discord.com/oauth2/authorize?client_id=1564977181258420344&scope=applications.commands&integration_type=0&guild_id=1563868821880709182&disable_guild_select=true)
+
+서버 ID는 Discord 개발자 모드에서 확인할 수 있습니다. 이 링크로 앱을 다른 서버에 추가해도 Edge Function이 지정된 서버·채널이 아니면 모든 요청을 거부합니다.
 
 ## 3. Edge Function 배포와 비밀 값
 
