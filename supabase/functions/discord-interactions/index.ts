@@ -270,6 +270,47 @@ async function handleModal(db: ReturnType<typeof createClient>, interaction: any
   return interactionResponse("알 수 없는 입력입니다. 명령을 다시 실행해 주세요.");
 }
 
+async function processAction(db: ReturnType<typeof createClient>, interaction: any) {
+  try {
+    if (interaction.type === 2) {
+      const command = String(interaction.data?.name ?? "");
+      const user = discordUser(interaction);
+      if (!user?.id) return interactionResponse("Discord 서버에서 실행해 주세요.");
+
+      const requiredGuild = Deno.env.get("DISCORD_GUILD_ID");
+      if (requiredGuild && interaction.guild_id !== requiredGuild) return interactionResponse("등록된 RP 서버에서만 사용할 수 있습니다.");
+
+      if (command === COMMANDS.attendanceIn || command === COMMANDS.attendanceOut) {
+        const profile = await getAuthorizedProfile(db, user.id, "attendance");
+        return interactionResponse(await attendanceAction(db, profile, user, command === COMMANDS.attendanceIn));
+      }
+    } else if (interaction.type === 5) {
+      return await handleModal(db, interaction);
+    }
+    return interactionResponse("지원하지 않는 Discord 입력 형식입니다.");
+  } catch (error) {
+    console.error("Discord interaction failed", error);
+    const message = error instanceof Error ? error.message : "요청을 처리하지 못했습니다.";
+    return interactionResponse(message.slice(0, 1800));
+  }
+}
+
+async function sendDeferredResult(interaction: any, db: ReturnType<typeof createClient>) {
+  const result = await processAction(db, interaction);
+  const resultBody = await result.json();
+  const content = String(resultBody?.data?.content ?? "요청을 처리했습니다.");
+  const applicationId = String(interaction.application_id ?? "");
+  const token = String(interaction.token ?? "");
+  if (!applicationId || !token) return;
+
+  const response = await fetch(`https://discord.com/api/v10/webhooks/${applicationId}/${token}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content, flags: EPHEMERAL }),
+  });
+  if (!response.ok) console.error("Discord follow-up failed", response.status, await response.text());
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -292,52 +333,53 @@ Deno.serve(async (request) => {
 
   const db = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
-  try {
-    if (interaction.type === 2) {
-      const command = String(interaction.data?.name ?? "");
-      const user = discordUser(interaction);
-      if (!user?.id) return interactionResponse("Discord 서버에서 실행해 주세요.");
+  if (interaction.type === 2) {
+    const command = String(interaction.data?.name ?? "");
+    const user = discordUser(interaction);
+    if (!user?.id) return interactionResponse("Discord 서버에서 실행해 주세요.");
 
-      const requiredGuild = Deno.env.get("DISCORD_GUILD_ID");
-      if (requiredGuild && interaction.guild_id !== requiredGuild) return interactionResponse("등록된 RP 서버에서만 사용할 수 있습니다.");
+    const requiredGuild = Deno.env.get("DISCORD_GUILD_ID");
+    if (requiredGuild && interaction.guild_id !== requiredGuild) return interactionResponse("등록된 RP 서버에서만 사용할 수 있습니다.");
 
-      if (command === COMMANDS.attendanceIn || command === COMMANDS.attendanceOut) {
-        const profile = await getAuthorizedProfile(db, user.id, "attendance");
-        const result = await attendanceAction(db, profile, user, command === COMMANDS.attendanceIn);
-        return interactionResponse(result);
-      }
-
-      if (command === COMMANDS.vehicleSpawn) {
-        return modalResponse("vehicle_spawn", "차량 스폰 기록", [
-          { id: "vehicle_model", label: "차량 모델", max: 80, placeholder: "스폰한 차량 이름" },
-          { id: "reason", label: "스폰 사유", style: 2, max: 500, placeholder: "순찰, 출동 등" },
-          { id: "passengers", label: "탑승자 (선택)", required: false, max: 200, placeholder: "Roblox 닉네임" },
-        ]);
-      }
-
-      if (command === COMMANDS.vehicleDelete) {
-        return modalResponse("vehicle_delete", "차량 삭제 기록", [
-          { id: "vehicle_model", label: "차량 모델", max: 80, placeholder: "삭제한 차량 이름" },
-          { id: "reason", label: "삭제 사유", style: 2, max: 500, placeholder: "차량 삭제 사유" },
-        ]);
-      }
-
-      if (command === COMMANDS.custody) {
-        return modalResponse("custody", "구금 기록", [
-          { id: "target", label: "대상자 Roblox 닉네임", max: 40 },
-          { id: "minutes", label: "구금 시간 (분)", max: 5, placeholder: "예: 10" },
-          { id: "reason", label: "구금 사유", style: 2, max: 500 },
-        ]);
-      }
-
-      return interactionResponse("지원하지 않는 명령입니다.");
+    if (command === COMMANDS.vehicleSpawn) {
+      return modalResponse("vehicle_spawn", "차량 스폰 기록", [
+        { id: "vehicle_model", label: "차량 모델", max: 80, placeholder: "스폰한 차량 이름" },
+        { id: "reason", label: "스폰 사유", style: 2, max: 500, placeholder: "순찰, 출동 등" },
+        { id: "passengers", label: "탑승자 (선택)", required: false, max: 200, placeholder: "Roblox 닉네임" },
+      ]);
     }
 
-    if (interaction.type === 5) return await handleModal(db, interaction);
+    if (command === COMMANDS.vehicleDelete) {
+      return modalResponse("vehicle_delete", "차량 삭제 기록", [
+        { id: "vehicle_model", label: "차량 모델", max: 80, placeholder: "삭제한 차량 이름" },
+        { id: "reason", label: "삭제 사유", style: 2, max: 500, placeholder: "차량 삭제 사유" },
+      ]);
+    }
+
+    if (command === COMMANDS.custody) {
+      return modalResponse("custody", "구금 기록", [
+        { id: "target", label: "대상자 Roblox 닉네임", max: 40 },
+        { id: "minutes", label: "구금 시간 (분)", max: 5, placeholder: "예: 10" },
+        { id: "reason", label: "구금 사유", style: 2, max: 500 },
+      ]);
+    }
+
+    if (command !== COMMANDS.attendanceIn && command !== COMMANDS.attendanceOut) {
+      return interactionResponse("지원하지 않는 명령입니다.");
+    }
+  } else if (interaction.type !== 5) {
     return interactionResponse("지원하지 않는 Discord 입력 형식입니다.");
-  } catch (error) {
-    console.error("Discord interaction failed", error);
-    const message = error instanceof Error ? error.message : "요청을 처리하지 못했습니다.";
-    return interactionResponse(message.slice(0, 1800));
   }
+
+  const task = sendDeferredResult(interaction, db).catch((error) => {
+    console.error("Deferred Discord action failed", error);
+  });
+  const runtime = (globalThis as any).EdgeRuntime;
+  if (runtime && typeof runtime.waitUntil === "function") {
+    runtime.waitUntil(task);
+    return json({ type: 5, data: { flags: EPHEMERAL } });
+  }
+
+  await task;
+  return interactionResponse("요청 처리를 완료했습니다.");
 });
