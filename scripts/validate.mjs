@@ -50,7 +50,7 @@ check('desktop runtime and security guards', () => {
 });
 check('shared-record role policies', () => {
   const sql = read('supabase/security_hardening.sql');
-  for (const name of ['can_insert_shared_module', 'can_update_shared_module', 'can_delete_shared_module', 'can_access_intranet']) {
+  for (const name of ['can_insert_shared_module', 'can_update_shared_module', 'can_delete_shared_module', 'can_access_intranet', 'can_read_shared_module']) {
     if (!sql.includes('function public.' + name)) throw new Error('Missing policy function: ' + name);
   }
   if (!sql.includes("payload->>'userId'=auth.uid()::text")) throw new Error('Audit actor binding missing');
