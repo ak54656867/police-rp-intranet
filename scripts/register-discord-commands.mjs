@@ -14,6 +14,7 @@ const commands = [
   { name: "차량삭제", description: "차량 삭제 기록을 작성합니다." },
   { name: "구금", description: "RP 구금 기록을 작성합니다." },
   { name: "인트라넷", description: "경찰청 통합 인트라넷 링크를 안내합니다." },
+  { name: "공지", description: "공지 채널에서 공지를 작성해 인트라넷에도 등록합니다." },
 ];
 
 const response = await fetch(
