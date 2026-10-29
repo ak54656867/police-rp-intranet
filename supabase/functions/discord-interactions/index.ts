@@ -12,7 +12,20 @@ const COMMANDS = {
   vehicleDelete: "차량삭제",
   custody: "구금",
   intranet: "인트라넷",
+  announcement: "공지",
 };
+
+const ANNOUNCEMENT_CHANNEL_IDS = new Set(["1563868823235469346", "1563868823235469347"]);
+
+function isAnnouncementFlow(interaction: any) {
+  return (interaction.type === 2 && interaction.data?.name === COMMANDS.announcement) ||
+    (interaction.type === 5 && interaction.data?.custom_id === "announcement_create");
+}
+
+function isAllowedInteractionChannel(interaction: any, commandChannel: string | undefined) {
+  if (isAnnouncementFlow(interaction)) return ANNOUNCEMENT_CHANNEL_IDS.has(String(interaction.channel_id ?? ""));
+  return Boolean(commandChannel && interaction.channel_id === commandChannel);
+}
 
 type Json = Record<string, unknown>;
 
@@ -205,6 +218,27 @@ async function handleModal(db: ReturnType<typeof createClient>, interaction: any
   const customId = String(interaction.data?.custom_id ?? "");
   const values = modalValues(interaction.data?.components);
 
+  if (customId === "announcement_create") {
+    const profile = await getAuthorizedProfile(db, user.id, "notices");
+    const title = values.title ?? "";
+    const category = values.category ?? "";
+    const body = values.body ?? "";
+    const allowedCategories = ["공지", "인사", "지시", "공문", "긴급"];
+    if (!title || title.length > 100 || !allowedCategories.includes(category) || !body || body.length > 1400) {
+      return interactionResponse("제목·분류·내용을 확인해 주세요. 분류는 공지, 인사, 지시, 공문, 긴급 중 하나여야 합니다.");
+    }
+    const id = crypto.randomUUID();
+    const notice = {
+      id, title, category, body,
+      author: profile.roblox_username || profile.display_name || discordLabel(user),
+      date: new Date().toISOString(), source: "Discord",
+      discord_id: user.id, discord_username: discordLabel(user),
+    };
+    const { error } = await db.from("shared_records").insert({ module: "notices", record_id: id, payload: notice, updated_by: profile.id });
+    if (error) throw error;
+    return interactionResponse(`📢 **${title}**\n분류: ${category}\n${body}\n\n작성: ${notice.author}\n[인트라넷 공지 목록](https://police-rp-intranet.aclclouds.online/)`);
+  }
+
   if (customId === "vehicle_spawn") {
     const profile = await getAuthorizedProfile(db, user.id, "assets");
     const vehicleModel = values.vehicle_model ?? "";
@@ -277,8 +311,8 @@ async function processAction(db: ReturnType<typeof createClient>, interaction: a
     if (!requiredGuild || interaction.guild_id !== requiredGuild) {
       return interactionResponse("이 명령은 인트라넷에 등록된 RP 서버에서만 사용할 수 있습니다.");
     }
-    if (!requiredChannel || interaction.channel_id !== requiredChannel) {
-      return interactionResponse("이 명령은 지정된 Discord 채널에서만 사용할 수 있습니다.");
+    if (!isAllowedInteractionChannel(interaction, requiredChannel)) {
+      return interactionResponse("이 명령은 지정된 명령 또는 공지 채널에서만 사용할 수 있습니다.");
     }
     if (interaction.type === 2) {
       const command = String(interaction.data?.name ?? "");
@@ -346,10 +380,18 @@ Deno.serve(async (request) => {
     const requiredGuild = Deno.env.get("DISCORD_GUILD_ID");
     const requiredChannel = Deno.env.get("DISCORD_CHANNEL_ID");
     if (!requiredGuild || interaction.guild_id !== requiredGuild) return interactionResponse("등록된 RP 서버에서만 사용할 수 있습니다.");
-    if (!requiredChannel || interaction.channel_id !== requiredChannel) return interactionResponse("지정된 Discord 채널에서만 사용할 수 있습니다.");
+    if (!isAllowedInteractionChannel(interaction, requiredChannel)) return interactionResponse("이 명령은 지정된 명령 또는 공지 채널에서만 사용할 수 있습니다.");
 
     if (command === COMMANDS.intranet) {
       return interactionResponse("경찰청 통합 인트라넷: https://police-rp-intranet.aclclouds.online/");
+    }
+
+    if (command === COMMANDS.announcement) {
+      return modalResponse("announcement_create", "공지 작성", [
+        { id: "title", label: "제목", max: 100, placeholder: "공지 제목" },
+        { id: "category", label: "분류 (공지/인사/지시/공문/긴급)", max: 12, placeholder: "공지" },
+        { id: "body", label: "내용", style: 2, max: 1400, placeholder: "공지 내용을 입력하세요" },
+      ]);
     }
 
     if (command === COMMANDS.vehicleSpawn) {
