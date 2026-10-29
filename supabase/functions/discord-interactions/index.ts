@@ -46,7 +46,7 @@ async function verifyDiscordRequest(request: Request, body: string): Promise<boo
 }
 
 function interactionResponse(content: string) {
-  return json({ type: 4, data: { content, flags: EPHEMERAL } });
+  return json({ type: 4, data: { content } });
 }
 
 function modalResponse(customId: string, title: string, fields: Array<{ id: string; label: string; style?: number; required?: boolean; max?: number; placeholder?: string }>) {
@@ -312,7 +312,7 @@ async function sendDeferredResult(interaction: any, db: ReturnType<typeof create
   const response = await fetch(`https://discord.com/api/v10/webhooks/${applicationId}/${token}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content, flags: EPHEMERAL }),
+    body: JSON.stringify({ content }),
   });
   if (!response.ok) console.error("Discord follow-up failed", response.status, await response.text());
 }
@@ -389,7 +389,7 @@ Deno.serve(async (request) => {
   const runtime = (globalThis as any).EdgeRuntime;
   if (runtime && typeof runtime.waitUntil === "function") {
     runtime.waitUntil(task);
-    return json({ type: 5, data: { flags: EPHEMERAL } });
+    return json({ type: 5 });
   }
 
   await task;
