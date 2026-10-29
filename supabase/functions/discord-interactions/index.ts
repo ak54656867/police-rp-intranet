@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-signature-ed25519, x-signature-timestamp",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 const COMMANDS = {
@@ -350,11 +351,115 @@ async function sendDeferredResult(interaction: any, db: ReturnType<typeof create
   if (!response.ok) console.error("Discord follow-up failed", response.status, await response.text());
 }
 
+async function publishSiteAnnouncement(request: Request, body: string) {
+  let input: any;
+  try {
+    input = JSON.parse(body);
+  } catch {
+    return json({ error: "Invalid JSON body" }, 400);
+  }
+  if (input?.kind !== "announcement-publish" || typeof input.noticeId !== "string") {
+    return json({ error: "Unsupported request" }, 400);
+  }
+
+  const accessToken = (request.headers.get("authorization") ?? "").match(/^Bearer\\s+(.+)$/i)?.[1];
+  if (!accessToken) return json({ error: "Authentication required" }, 401);
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !serviceRoleKey) return json({ error: "Server configuration missing" }, 500);
+
+  const db = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { data: authData, error: authError } = await db.auth.getUser(accessToken);
+  if (authError || !authData?.user) return json({ error: "Invalid session" }, 401);
+  const userId = authData.user.id;
+
+  const { data: profile, error: profileError } = await db.from("profiles")
+    .select("id,display_name,roblox_username,role,status,active,permissions")
+    .eq("id", userId)
+    .maybeSingle();
+  if (profileError) return json({ error: "Profile lookup failed" }, 500);
+  if (!profile || !profile.active || (profile.status !== "approved" && profile.role !== "admin")) {
+    return json({ error: "An approved active intranet profile is required" }, 403);
+  }
+  const { data: groupRecord, error: groupError } = await db.from("shared_records")
+    .select("payload")
+    .eq("module", "permissionSets")
+    .eq("record_id", "__list__")
+    .maybeSingle();
+  if (groupError) return json({ error: "Permission lookup failed" }, 500);
+  const groups = Array.isArray(groupRecord?.payload) ? groupRecord.payload : [];
+  if (!permissionAllowed(profile, groups, "notices", "create")) return json({ error: "notices:create permission is required" }, 403);
+
+  const noticeId = input.noticeId.slice(0, 100);
+  const { data: noticeRow, error: noticeError } = await db.from("shared_records")
+    .select("record_id,payload,updated_by")
+    .eq("module", "notices")
+    .eq("record_id", noticeId)
+    .maybeSingle();
+  if (noticeError) return json({ error: "Notice lookup failed" }, 500);
+  if (!noticeRow || noticeRow.updated_by !== userId) return json({ error: "Notice not found for this account" }, 404);
+  const notice = noticeRow.payload ?? {};
+  const title = String(notice.title ?? "").trim().slice(0, 100);
+  const category = String(notice.category ?? "공지").trim();
+  const contentBody = String(notice.body ?? "").trim().slice(0, 1400);
+  if (!title || !contentBody) return json({ error: "Notice title and body are required" }, 400);
+
+  const markerModule = "discord_announcement_sync";
+  const { data: existingMarker, error: markerLookupError } = await db.from("shared_records")
+    .select("record_id")
+    .eq("module", markerModule)
+    .eq("record_id", noticeId)
+    .maybeSingle();
+  if (markerLookupError) return json({ error: "Sync status lookup failed" }, 500);
+  if (existingMarker) return json({ ok: true, alreadyPublished: true });
+
+  const secretName = category === "긴급" ? "DISCORD_NOTICE_WEBHOOK_IMPORTANT" : "DISCORD_NOTICE_WEBHOOK_GENERAL";
+  const webhookValue = Deno.env.get(secretName) ?? "";
+  if (!webhookValue) return json({ error: secretName + " secret is not configured" }, 503);
+  let webhookUrl: URL;
+  try {
+    webhookUrl = new URL(webhookValue);
+  } catch {
+    return json({ error: "Invalid Discord webhook URL" }, 500);
+  }
+  if (webhookUrl.hostname !== "discord.com" || !webhookUrl.pathname.startsWith("/api/webhooks/")) {
+    return json({ error: "Invalid Discord webhook host" }, 500);
+  }
+  webhookUrl.searchParams.set("wait", "true");
+
+  const author = String(notice.author ?? profile.roblox_username ?? profile.display_name ?? "인트라넷").slice(0, 80);
+  const message = `📢 **${title}**\\n**분류:** ${category}\\n${contentBody}\\n\\n작성: ${author}\\nhttps://police-rp-intranet.aclclouds.online/`;
+  try {
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: message.slice(0, 1950), allowed_mentions: { parse: [] } }),
+    });
+    if (!response.ok) {
+      console.error("Discord announcement webhook failed", response.status, await response.text());
+      return json({ error: "Discord webhook rejected the announcement" }, 502);
+    }
+    const posted = await response.json();
+    const { error: markerError } = await db.from("shared_records").insert({
+      module: markerModule,
+      record_id: noticeId,
+      payload: { noticeId, discordMessageId: posted.id ?? null, category, webhook: secretName, postedAt: new Date().toISOString() },
+      updated_by: userId,
+    });
+    if (markerError) console.error("Announcement sync marker write failed", markerError);
+    return json({ ok: true, discordMessageId: posted.id ?? null });
+  } catch (error) {
+    console.error("Discord announcement publish failed", error);
+    return json({ error: "Unable to reach Discord webhook" }, 502);
+  }
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   const body = await request.text();
+  if (!request.headers.get("x-signature-ed25519")) return await publishSiteAnnouncement(request, body);
   if (!(await verifyDiscordRequest(request, body))) return json({ error: "Invalid Discord request signature" }, 401);
 
   let interaction: any;
