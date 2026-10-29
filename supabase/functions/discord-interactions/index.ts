@@ -5,7 +5,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-signature-ed25519, x-signature-timestamp",
 };
 
-const EPHEMERAL = 64;
 const COMMANDS = {
   attendanceIn: "출근",
   attendanceOut: "퇴근",
