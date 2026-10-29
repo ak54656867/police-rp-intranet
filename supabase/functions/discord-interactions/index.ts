@@ -362,7 +362,7 @@ async function publishSiteAnnouncement(request: Request, body: string) {
     return json({ error: "Unsupported request" }, 400);
   }
 
-  const accessToken = (request.headers.get("authorization") ?? "").match(/^Bearer\\s+(.+)$/i)?.[1];
+  const accessToken = (request.headers.get("authorization") ?? "").match(/^Bearer\s+(.+)$/i)?.[1];
   if (!accessToken) return json({ error: "Authentication required" }, 401);
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -428,7 +428,7 @@ async function publishSiteAnnouncement(request: Request, body: string) {
   webhookUrl.searchParams.set("wait", "true");
 
   const author = String(notice.author ?? profile.roblox_username ?? profile.display_name ?? "인트라넷").slice(0, 80);
-  const message = `📢 **${title}**\\n**분류:** ${category}\\n${contentBody}\\n\\n작성: ${author}\\nhttps://police-rp-intranet.aclclouds.online/`;
+  const message = `📢 **${title}**\n**분류:** ${category}\n${contentBody}\n\n작성: ${author}\nhttps://police-rp-intranet.aclclouds.online/`;
   try {
     const response = await fetch(webhookUrl, {
       method: "POST",
