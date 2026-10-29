@@ -45,8 +45,8 @@ async function syncDiff(previous,current){
   const afterMap=new Map(after.filter(x=>x&&x.id!==undefined&&x.id!==null).map(x=>[String(x.id),x]));
   for(const [id,item] of afterMap){
    if(JSON.stringify(beforeMap.get(id))===JSON.stringify(item))continue;
-   const {error}=await supabaseClient.from('shared_records').upsert({module,record_id:id,payload:item,updated_by:authUser.id},{onConflict:'module,record_id'});
-   if(error)throw error;
+   const writeResult=beforeMap.has(id)?await supabaseClient.from('shared_records').update({payload:item,updated_by:authUser.id}).eq('module',module).eq('record_id',id):await supabaseClient.from('shared_records').insert({module,record_id:id,payload:item,updated_by:authUser.id});
+   if(writeResult.error)throw writeResult.error;
   }
   for(const [id] of beforeMap){if(!afterMap.has(id)){const {error}=await supabaseClient.from('shared_records').delete().eq('module',module).eq('record_id',id);if(error)throw error;}}
  }
