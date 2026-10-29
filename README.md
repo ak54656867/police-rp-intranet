@@ -11,7 +11,7 @@ https://ak54656867.github.io/police-rp-intranet/
 프론트엔드 코드와 SQL 스키마는 저장소에 포함되어 있습니다. **실제 인증과 데이터베이스는 소유자의 Supabase/Discord 프로젝트에서 아래 설정을 한 뒤 활성화됩니다.** 저장소 코드만으로 외부 계정의 Client Secret을 만들거나 프로젝트 설정을 대신 변경할 수는 없습니다.
 
 1. Supabase에서 프로젝트를 만들고 **SQL Editor**를 엽니다.
-2. 새 프로젝트라면 저장소의 `supabase/schema.sql` 전체를 SQL Editor에서 실행합니다. 이미 운영 중인 프로젝트라면 전체 스키마를 재실행하지 말고 `supabase/security_hardening.sql`과 `supabase/org_management_migration.sql`을 순서대로 실행합니다. 새 마이그레이션은 Discord 닉네임, 직책, 가입 승인자 기록 필드와 세부 권한 그룹의 RLS 검사를 추가합니다. 보안 강화 후 기존 비관리자 계정은 승인 대기 상태가 될 수 있으므로 최고 관리자 센터에서 신뢰할 수 있는 구성원만 승인하세요.
+2. 새 프로젝트라면 저장소의 `supabase/schema.sql` 전체를 SQL Editor에서 실행합니다. 이미 운영 중인 프로젝트라면 전체 스키마를 재실행하지 말고 `supabase/security_hardening.sql`과 `supabase/org_management_migration.sql`을 순서대로 실행합니다. 새 마이그레이션은 Discord 닉네임, 직책, 가입 승인자 기록 필드와 세부 권한 그룹의 RLS 검사를 추가합니다. 부서·직책 목록 저장 오류를 해결하는 `shared_records_module_check` 제약도 갱신하므로 이전 버전을 실행했다면 최신 파일을 다시 실행하세요. 보안 강화 후 기존 비관리자 계정은 승인 대기 상태가 될 수 있으므로 최고 관리자 센터에서 신뢰할 수 있는 구성원만 승인하세요.
 3. Supabase의 **Authentication → Providers → Discord**에서 Discord provider를 활성화합니다.
 4. Discord Developer Portal에서 OAuth2 애플리케이션을 만들고 Client ID와 Client Secret을 Supabase의 Discord provider 설정에 입력합니다. Secret은 웹사이트 코드나 GitHub 저장소에 넣지 마세요.
 5. Supabase **Authentication → URL Configuration**에서 Site URL을 `https://ak54656867.github.io`로 설정하고 Redirect URLs에 `https://ak54656867.github.io/police-rp-intranet/`를 추가합니다. Discord Developer Portal의 OAuth2 Redirect URL에는 Supabase가 표시하는 callback URL을 입력합니다(일반적으로 `https://<project-ref>.supabase.co/auth/v1/callback`).
