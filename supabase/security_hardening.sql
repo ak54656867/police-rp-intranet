@@ -14,7 +14,7 @@ begin
       and tablename in (
         'profiles','personnel','attendance','incidents','wanted_persons',
         'dispatches','leave_requests','assets','notices','audit_logs',
-        'org_units','documents'
+        'org_units','documents','security_events'
       )
   loop
     execute format('drop policy if exists %I on %I.%I',
