@@ -14,6 +14,23 @@ jobs:
     name: Version and announce patch notes
     runs-on: ubuntu-latest
     steps:
+      - name: Validate announcement webhook
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_ANNOUNCEMENTS_WEBHOOK }}
+        shell: bash
+        run: |
+          if [[ -z "$DISCORD_WEBHOOK" ]]; then
+            echo "::error::Add the DISCORD_ANNOUNCEMENTS_WEBHOOK repository secret before rerunning this workflow."
+            exit 1
+          fi
+          python - "$DISCORD_WEBHOOK" <<'PY'
+          import sys
+          from urllib.parse import urlparse
+          url = urlparse(sys.argv[1])
+          if url.scheme != "https" or url.hostname != "discord.com" or not url.path.startswith("/api/webhooks/"):
+              raise SystemExit("The secret must be a Discord webhook URL from discord.com.")
+          PY
+
       - name: Check out repository and tags
         uses: actions/checkout@v4
         with:
@@ -94,11 +111,6 @@ jobs:
           COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
         run: |
           set -euo pipefail
-          if [[ -z "$DISCORD_WEBHOOK" ]]; then
-            echo "::error::GitHub Actions secret DISCORD_ANNOUNCEMENTS_WEBHOOK is missing."
-            exit 1
-          fi
-
           export MESSAGE
           MESSAGE="$(cat <<EOF
 @here
@@ -124,7 +136,7 @@ EOF
           message = os.environ["MESSAGE"]
           payload = {
               "content": message[:1900],
-              "allowed_mentions": {"parse": ["everyone"]} if False else {"parse": ["here"]},
+              "allowed_mentions": {"parse": ["here"]},
           }
           request = urllib.request.Request(
               webhook,
