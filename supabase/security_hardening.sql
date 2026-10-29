@@ -151,7 +151,7 @@ alter table public.shared_records
   add constraint shared_records_module_check
   check (module in (
     'personnel','attendance','incidents','wanted','dispatch','leave','assets',
-    'notices','documents','audit','fines','departments','positions','orgPermissions'
+    'notices','documents','audit','fines','departments','positions','orgPermissions','permissionSets'
   ));
 
 create or replace function public.can_access_intranet()
@@ -186,7 +186,7 @@ set search_path = public
 as $$
   select case
     when public.current_role() = 'admin' then true
-    when p_module in ('departments','positions','orgPermissions') then false
+    when p_module in ('departments','positions','orgPermissions','permissionSets') then false
     when public.current_role() in ('chief','department_head','hr_manager') then true
     when public.current_role() = 'officer'
       then p_module in ('attendance','incidents','wanted','dispatch','leave','fines','audit')
@@ -205,7 +205,7 @@ set search_path = public
 as $$
   select case
     when public.current_role() = 'admin' then true
-    when p_module in ('audit','departments','positions','orgPermissions') then false
+    when p_module in ('audit','departments','positions','orgPermissions','permissionSets') then false
     when public.current_role() in ('chief','department_head','hr_manager') then true
     when public.current_role() = 'officer'
       then p_module in ('attendance','incidents','wanted','dispatch','leave','fines')
@@ -224,7 +224,7 @@ set search_path = public
 as $$
   select case
     when public.current_role() = 'admin' then true
-    when p_module in ('audit','departments','positions','orgPermissions') then false
+    when p_module in ('audit','departments','positions','orgPermissions','permissionSets') then false
     when public.current_role() in ('chief','department_head','hr_manager') then true
     else false
   end;
