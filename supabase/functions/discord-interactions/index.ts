@@ -302,9 +302,9 @@ async function handleModal(db: ReturnType<typeof createClient>, interaction: any
       date: createdAt, source: "Discord",
       discord_id: user.id, discord_username: discordLabel(user),
     };
+    const posted = await postAnnouncementWebhook(destination, title, body, author, createdAt);
     const { error } = await db.from("shared_records").insert({ module: "notices", record_id: id, payload: notice, updated_by: profile.id });
     if (error) throw error;
-    const posted = await postAnnouncementWebhook(destination, title, body, author, createdAt);
     const { error: markerError } = await db.from("shared_records").insert({
       module: "discord_announcement_sync",
       record_id: id,
