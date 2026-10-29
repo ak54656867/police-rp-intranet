@@ -102,6 +102,21 @@ check('realtime synchronization regression guards', () => {
   if (!html.includes("status==='CHANNEL_ERROR'||status==='TIMED_OUT'")) throw new Error('Realtime connection failures are not surfaced');
 });
 
+check('connected organization chart and security event logging', () => {
+  const html = read('site/index.html');
+  const hardening = read('supabase/security_hardening.sql');
+  const schema = read('supabase/schema.sql');
+  const edge = read('supabase/functions/security-event/index.ts');
+  if (!html.includes('class="org-tree"') || !html.includes('border-left:2px solid #426ca8')) throw new Error('Connected org chart tree/connector styles missing');
+  if (!html.includes("supabaseClient.functions.invoke('security-event'")) throw new Error('Security event function is not called from authenticated session flow');
+  if (!html.includes("from('security_events').select")) throw new Error('Admin security event log query missing');
+  for (const file of [hardening, schema]) {
+    if (!file.includes('create table if not exists public.security_events')) throw new Error('Security event table missing from SQL source');
+    if (!file.includes('security events read admin only')) throw new Error('Admin-only security event policy missing');
+  }
+  if (!edge.includes('authClient.auth.getUser()') || !edge.includes('SUPABASE_SERVICE_ROLE_KEY') || !edge.includes('ip_address: ip')) throw new Error('Edge logger must authenticate the session and store IP server-side');
+});
+
 const failed = checks.filter((x) => !x.ok);
 for (const item of checks) {
   process.stdout.write((item.ok ? 'PASS ' : 'FAIL ') + item.name + (item.error ? ': ' + item.error : '') + '\n');
