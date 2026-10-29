@@ -90,7 +90,7 @@ create or replace function public.protect_self_profile_update()
 returns trigger
 language plpgsql
 set search_path = public
-as $
+as $$
 begin
   if auth.uid() = old.id and old.role <> 'admin' then
     new.id := old.id;
@@ -104,7 +104,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 drop trigger if exists profiles_protect_self_update on public.profiles;
 create trigger profiles_protect_self_update
   before update on public.profiles
