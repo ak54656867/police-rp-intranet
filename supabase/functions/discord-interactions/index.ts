@@ -273,8 +273,12 @@ async function handleModal(db: ReturnType<typeof createClient>, interaction: any
 async function processAction(db: ReturnType<typeof createClient>, interaction: any) {
   try {
     const requiredGuild = Deno.env.get("DISCORD_GUILD_ID");
+    const requiredChannel = Deno.env.get("DISCORD_CHANNEL_ID");
     if (!requiredGuild || interaction.guild_id !== requiredGuild) {
       return interactionResponse("이 명령은 인트라넷에 등록된 RP 서버에서만 사용할 수 있습니다.");
+    }
+    if (!requiredChannel || interaction.channel_id !== requiredChannel) {
+      return interactionResponse("이 명령은 지정된 Discord 채널에서만 사용할 수 있습니다.");
     }
     if (interaction.type === 2) {
       const command = String(interaction.data?.name ?? "");
@@ -340,7 +344,9 @@ Deno.serve(async (request) => {
     if (!user?.id) return interactionResponse("Discord 서버에서 실행해 주세요.");
 
     const requiredGuild = Deno.env.get("DISCORD_GUILD_ID");
+    const requiredChannel = Deno.env.get("DISCORD_CHANNEL_ID");
     if (!requiredGuild || interaction.guild_id !== requiredGuild) return interactionResponse("등록된 RP 서버에서만 사용할 수 있습니다.");
+    if (!requiredChannel || interaction.channel_id !== requiredChannel) return interactionResponse("지정된 Discord 채널에서만 사용할 수 있습니다.");
 
     if (command === COMMANDS.vehicleSpawn) {
       return modalResponse("vehicle_spawn", "차량 스폰 기록", [
