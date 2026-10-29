@@ -117,6 +117,19 @@ check('connected organization chart and security event logging', () => {
   if (!edge.includes('authClient.auth.getUser()') || !edge.includes('SUPABASE_SERVICE_ROLE_KEY') || !edge.includes('ip_address: ip')) throw new Error('Edge logger must authenticate the session and store IP server-side');
 });
 
+check('continuous organization connectors and Discord audit webhooks', () => {
+  const html = read('site/index.html');
+  const bot = read('supabase/functions/discord-interactions/index.ts');
+  const audit = read('supabase/functions/discord-audit-log/index.ts');
+  if (!html.includes('function drawOrgConnectors()') || !html.includes('org-connectors')) throw new Error('SVG organization connector renderer missing');
+  if (html.includes("positionNode('교통안전과장'") || html.includes("positionNode('생활안전과장'")) throw new Error('Unregistered department head positions must not be hardcoded');
+  if (!html.includes("functions.invoke('discord-audit-log'")) throw new Error('Intranet audit webhook invocation missing');
+  for (const secret of ['DISCORD_CUSTODY_WEBHOOK', 'DISCORD_VEHICLE_WEBHOOK', 'DISCORD_PERSONNEL_WEBHOOK']) {
+    if (!audit.includes(secret) || !bot.includes(secret)) throw new Error('Discord webhook secret missing: ' + secret);
+  }
+  if (!bot.includes('postAuditWebhook("custody"') || !bot.includes('postAuditWebhook("vehicle"')) throw new Error('Discord bot custody/vehicle logging missing');
+});
+ 
 const failed = checks.filter((x) => !x.ok);
 for (const item of checks) {
   process.stdout.write((item.ok ? 'PASS ' : 'FAIL ') + item.name + (item.error ? ': ' + item.error : '') + '\n');
