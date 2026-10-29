@@ -345,6 +345,19 @@ grant execute on function public.can_delete_shared_module(text) to authenticated
 
 -- Replace broad policies that previously allowed every authenticated account to
 -- read, overwrite, and delete all shared records, including privileged org data.
+-- PostgreSQL combines permissive policies with OR. Remove any unknown legacy
+-- policy on this table so an old broad rule cannot bypass the approval gate.
+do $
+declare policy_row record;
+begin
+  for policy_row in
+    select policyname from pg_policies
+    where schemaname='public' and tablename='shared_records'
+  loop
+    execute format('drop policy if exists %I on public.shared_records', policy_row.policyname);
+  end loop;
+end;
+$;
 drop policy if exists "shared records read authenticated" on public.shared_records;
 drop policy if exists "shared records insert authenticated" on public.shared_records;
 drop policy if exists "shared records update authenticated" on public.shared_records;
