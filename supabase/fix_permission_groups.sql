@@ -12,6 +12,34 @@ alter table public.shared_records
     'permissionSets'
   ));
 
+-- Resolve effective permissions from the logged-in profile's assigned group IDs.
+create or replace function public.has_org_module_permission(p_module text, p_action text)
+returns boolean language sql stable security definer set search_path = public
+as $
+  select exists (
+    select 1 from public.profiles p
+    cross join lateral jsonb_array_elements_text(coalesce(p.permissions, '[]'::jsonb)) assigned(group_id)
+    join public.shared_records r on r.module = 'permissionSets' and r.record_id = '__list__'
+    cross join lateral jsonb_array_elements(coalesce(r.payload, '[]'::jsonb)) permission_group
+    cross join lateral jsonb_array_elements_text(coalesce(permission_group->'permissions', '[]'::jsonb)) granted(permission_code)
+    where p.id = auth.uid() and permission_group->>'id' = assigned.group_id
+      and (granted.permission_code = p_module || ':' || p_action
+        or granted.permission_code = p_module || ':*' or granted.permission_code = '*:*')
+  );
+$;
+
+create or replace function public.has_assigned_permission_set()
+returns boolean language sql stable security definer set search_path = public
+as $
+  select exists (
+    select 1 from public.profiles p
+    cross join lateral jsonb_array_elements_text(coalesce(p.permissions, '[]'::jsonb)) assigned(group_id)
+    join public.shared_records r on r.module = 'permissionSets' and r.record_id = '__list__'
+    cross join lateral jsonb_array_elements(coalesce(r.payload, '[]'::jsonb)) permission_group
+    where p.id = auth.uid() and permission_group->>'id' = assigned.group_id
+  );
+$;
+
 create or replace function public.can_insert_shared_module(p_module text)
 returns boolean
 language sql
