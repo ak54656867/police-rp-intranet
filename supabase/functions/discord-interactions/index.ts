@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-signature-ed25519, x-signature-timestamp, x-patch-notes-secret",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-signature-ed25519, x-signature-timestamp",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -89,7 +89,7 @@ function announcementPostedResponse(destination: string) {
   return json({ type: 4, data: { content: "✅ " + label + " 채널에 공지를 게시했습니다.", flags: 64 } });
 }
 
-async function postAnnouncementWebhook(destination: string, title: string, body: string, author: string, timestamp: string, mentionHere = false) {
+async function postAnnouncementWebhook(destination: string, title: string, body: string, author: string, timestamp: string) {
   const important = destination === "important";
   const secretName = important ? "DISCORD_NOTICE_WEBHOOK_IMPORTANT" : "DISCORD_NOTICE_WEBHOOK_GENERAL";
   const webhookValue = Deno.env.get(secretName) ?? "";
@@ -108,7 +108,7 @@ async function postAnnouncementWebhook(destination: string, title: string, body:
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      content: important ? "@everyone" : mentionHere ? "@here" : undefined,
+      content: important ? "@everyone" : undefined,
       embeds: [{
         title: "📢 " + title,
         url: "https://police-rp-intranet.aclclouds.online/",
@@ -118,7 +118,7 @@ async function postAnnouncementWebhook(destination: string, title: string, body:
         footer: { text: "경찰 RP 인트라넷" },
         timestamp,
       }],
-      allowed_mentions: { parse: important ? ["everyone"] : mentionHere ? ["here"] : [] },
+      allowed_mentions: { parse: important ? ["everyone"] : [] },
     }),
   });
   if (!response.ok) {
@@ -475,86 +475,6 @@ async function sendDeferredResult(interaction: any, db: ReturnType<typeof create
   if (!response.ok) console.error("Discord follow-up failed", response.status, await response.text());
 }
 
-async function publishAutomatedPatchNotes(request: Request, body: string) {
-  const expectedSecret = Deno.env.get("PATCH_NOTES_SECRET") ?? "";
-  const suppliedSecret = request.headers.get("x-patch-notes-secret") ?? "";
-  if (!expectedSecret || suppliedSecret.length !== expectedSecret.length) {
-    return json({ error: "Unauthorized" }, 401);
-  }
-  const expectedBytes = new TextEncoder().encode(expectedSecret);
-  const suppliedBytes = new TextEncoder().encode(suppliedSecret);
-  let secretMismatch = 0;
-  for (let i = 0; i < expectedBytes.length; i++) secretMismatch |= expectedBytes[i] ^ suppliedBytes[i];
-  if (secretMismatch !== 0) return json({ error: "Unauthorized" }, 401);
-
-  let input: any;
-  try { input = JSON.parse(body); } catch { return json({ error: "Invalid JSON body" }, 400); }
-  const version = String(input?.version ?? "").trim();
-  const title = String(input?.title ?? "").trim().slice(0, 100);
-  const contentBody = String(input?.body ?? "").trim().slice(0, 1400);
-  if (!/^\\d+\\.\\d+\\.\\d+$/.test(version) || !title || !contentBody) {
-    return json({ error: "Valid version, title and body are required" }, 400);
-  }
-
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !serviceRoleKey) return json({ error: "Server configuration missing" }, 500);
-  const db = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const noticeId = ("patch-note-v" + version).slice(0, 100);
-  const markerModule = "discord_announcement_sync";
-
-  const { data: existingMarker, error: markerLookupError } = await db.from("shared_records")
-    .select("record_id,payload").eq("module", markerModule).eq("record_id", noticeId).maybeSingle();
-  if (markerLookupError) return json({ error: "Sync status lookup failed" }, 500);
-  if (existingMarker) return json({ ok: true, alreadyPublished: true, version });
-
-  const now = new Date().toISOString();
-  const notice = {
-    id: noticeId,
-    title: title.startsWith("패치노트") ? title : "패치노트 " + title,
-    category: "공지",
-    body: contentBody,
-    author: "경찰 RP 인트라넷 자동화",
-    date: now,
-    destination: "general",
-    patchVersion: version,
-  };
-
-  const { data: existingNotice, error: noticeLookupError } = await db.from("shared_records")
-    .select("record_id,payload").eq("module", "notices").eq("record_id", noticeId).maybeSingle();
-  if (noticeLookupError) return json({ error: "Notice lookup failed" }, 500);
-  if (!existingNotice) {
-    const { error: insertError } = await db.from("shared_records").insert({
-      module: "notices", record_id: noticeId, payload: notice, updated_by: null,
-    });
-    if (insertError) return json({ error: "Unable to save patch notes to intranet", detail: insertError.message }, 500);
-  }
-
-  try {
-    const posted = await postAnnouncementWebhook(
-      "general", notice.title, contentBody, notice.author, now, true,
-    );
-    const { error: markerError } = await db.from("shared_records").insert({
-      module: markerModule,
-      record_id: noticeId,
-      payload: {
-        noticeId,
-        discordMessageId: posted.id ?? null,
-        category: "공지",
-        webhook: "DISCORD_NOTICE_WEBHOOK_GENERAL",
-        postedAt: new Date().toISOString(),
-        patchVersion: version,
-      },
-      updated_by: null,
-    });
-    if (markerError) console.error("Patch note sync marker write failed", markerError);
-    return json({ ok: true, version, noticeId, discordMessageId: posted.id ?? null });
-  } catch (error) {
-    console.error("Automated patch note publish failed", error);
-    return json({ error: error instanceof Error ? error.message : "Unable to reach Discord webhook" }, 502);
-  }
-}
-
 async function publishSiteAnnouncement(request: Request, body: string) {
   let input: any;
   try {
@@ -562,7 +482,7 @@ async function publishSiteAnnouncement(request: Request, body: string) {
   } catch {
     return json({ error: "Invalid JSON body" }, 400);
   }
-  if (input?.kind === "patch-note-publish") return await publishAutomatedPatchNotes(request, body);\n  if (input?.kind !== "announcement-publish" || typeof input.noticeId !== "string") {
+  if (input?.kind !== "announcement-publish" || typeof input.noticeId !== "string") {
     return json({ error: "Unsupported request" }, 400);
   }
 
