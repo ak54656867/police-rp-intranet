@@ -11,7 +11,7 @@ https://ak54656867.github.io/police-rp-intranet/
 프론트엔드 코드와 SQL 스키마는 저장소에 포함되어 있습니다. **실제 인증과 데이터베이스는 소유자의 Supabase/Discord 프로젝트에서 아래 설정을 한 뒤 활성화됩니다.** 저장소 코드만으로 외부 계정의 Client Secret을 만들거나 프로젝트 설정을 대신 변경할 수는 없습니다.
 
 1. Supabase에서 프로젝트를 만들고 **SQL Editor**를 엽니다.
-2. 새 프로젝트라면 저장소의 `supabase/schema.sql` 전체를 SQL Editor에서 실행합니다. 이미 운영 중인 프로젝트라면 전체 스키마를 재실행하지 말고 `supabase/security_hardening.sql`만 실행해 보안 정책과 누락된 프로필 필드를 적용합니다. 이 마이그레이션 이후 기존 비관리자 계정은 승인 대기 상태가 되므로, 최고 관리자 센터에서 신뢰할 수 있는 구성원만 다시 승인하세요.
+2. 새 프로젝트라면 저장소의 `supabase/schema.sql` 전체를 SQL Editor에서 실행합니다. 이미 운영 중인 프로젝트라면 전체 스키마를 재실행하지 말고 `supabase/security_hardening.sql`과 `supabase/org_management_migration.sql`을 순서대로 실행합니다. 새 마이그레이션은 Discord 닉네임, 직책, 가입 승인자 기록 필드와 세부 권한 그룹의 RLS 검사를 추가합니다. 보안 강화 후 기존 비관리자 계정은 승인 대기 상태가 될 수 있으므로 최고 관리자 센터에서 신뢰할 수 있는 구성원만 승인하세요.
 3. Supabase의 **Authentication → Providers → Discord**에서 Discord provider를 활성화합니다.
 4. Discord Developer Portal에서 OAuth2 애플리케이션을 만들고 Client ID와 Client Secret을 Supabase의 Discord provider 설정에 입력합니다. Secret은 웹사이트 코드나 GitHub 저장소에 넣지 마세요.
 5. Supabase **Authentication → URL Configuration**에서 Site URL을 `https://ak54656867.github.io`로 설정하고 Redirect URLs에 `https://ak54656867.github.io/police-rp-intranet/`를 추가합니다. Discord Developer Portal의 OAuth2 Redirect URL에는 Supabase가 표시하는 callback URL을 입력합니다(일반적으로 `https://<project-ref>.supabase.co/auth/v1/callback`).
@@ -52,6 +52,8 @@ where id = '<검증한 auth_user_uuid>';
 
 - 로그인 전 데이터는 현재 브라우저의 `localStorage`에 저장됩니다.
 - 공유 데이터가 비어 있을 때 일반 계정의 브라우저 로컬 기록을 자동 업로드하지 않습니다. 최고 관리자가 최초 초기화를 수행해야 다른 구성원의 로컬 기록이 실수로 공유 데이터에 섞이지 않습니다.
+- 가입 신청은 Roblox 닉네임, Discord 닉네임, 희망 배치 계급·부서를 저장합니다. 승인 처리자의 Discord 닉네임과 처리 시각은 계정 관리에 표시됩니다. 승인된 구성원은 인사 목록에 자동 등록됩니다.
+- 부서·직책 설정과 세부 권한 그룹은 `shared_records`의 목록 레코드로 공유됩니다. 그룹별 조회·등록·수정·삭제·승인 항목은 계정에 부여할 수 있으며, 기존 프로젝트는 `supabase/org_management_migration.sql`을 적용해야 그룹 권한이 RLS에도 반영됩니다.
 - 공유 데이터는 승인된 RP 구성원끼리 공유됩니다. `supabase/security_hardening.sql`은 승인 여부와 역할별 읽기·추가·수정·삭제 권한을 분리하며, 감사 로그와 조직 설정은 일반 계정이 수정·삭제하지 못하도록 제한합니다. 정책은 실제 Supabase 프로젝트에 마이그레이션을 실행해야 적용됩니다.
 - Supabase 프로젝트 URL/key와 Discord OAuth 설정이 없으면 이 대화만으로 외부 서비스 연결을 실제 검증할 수 없습니다.
 - 가상 역할극 용도로만 사용하세요. 실제 개인정보, 실제 사건 정보, 민감한 경찰 정보를 입력하지 마세요.
