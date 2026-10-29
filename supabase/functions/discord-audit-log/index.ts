@@ -71,7 +71,7 @@ Deno.serve(async (req: Request) => {
   if (authError || !authData.user) return json({ error: "Invalid session" }, 401);
   const adminClient = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
   const { data: profile, error: profileError } = await adminClient.from("profiles")
-    .select("id,role,status,active,roblox_username,discord_username")
+    .select("id,role,status,active,roblox_username,discord_username,permissions")
     .eq("id", authData.user.id).maybeSingle();
   if (profileError || !profile) return json({ error: "Profile not found" }, 403);
   if (profile.role !== "admin" && !(profile.status === "approved" && profile.active === true)) {
@@ -84,6 +84,19 @@ Deno.serve(async (req: Request) => {
     return json({ error: "Invalid event payload" }, 400);
   }
   if (eventType === "personnel" && profile.role !== "admin") return json({ error: "Admin role required for personnel logs" }, 403);
+  if (profile.role !== "admin") {
+    const moduleName = eventType === "custody" ? "fines" : "assets";
+    const { data: groupRecord, error: groupError } = await adminClient.from("shared_records")
+      .select("payload").eq("module", "permissionSets").eq("record_id", "__list__").maybeSingle();
+    if (groupError) return json({ error: "Could not verify permissions" }, 500);
+    const groups = Array.isArray(groupRecord?.payload) ? groupRecord.payload : [];
+    const groupIds = Array.isArray(profile.permissions) ? profile.permissions.map(String) : [];
+    const allowed = groups.some((group: any) => group && groupIds.includes(String(group.id)) &&
+      Array.isArray(group.permissions) && group.permissions.some((permission: unknown) =>
+        permission === moduleName + ":create" || permission === moduleName + ":*" || permission === "*:*"
+      ));
+    if (!allowed) return json({ error: "Missing permission: " + moduleName + ":create" }, 403);
+  }
   const details = { ...body.details };
   details.officer = details.officer || profile.roblox_username || profile.discord_username || authData.user.id;
   details.source = details.source || "인트라넷";
