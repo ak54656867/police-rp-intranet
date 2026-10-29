@@ -174,8 +174,8 @@ function drawOrgConnectors(){
   const start=point(parent,'bottom'),ends=children.map(card=>point(card,'top'));
   const bend=Math.min(...ends.map(p=>p.y))-Math.max(10,(Math.min(...ends.map(p=>p.y))-start.y)/2);
   const xs=ends.map(p=>p.x),left=Math.min(...xs),right=Math.max(...xs);
-  path('M '+start.x+' '+start.y+' V '+bend);
-  if(left!==right)path('M '+left+' '+bend+' H '+right);
+  // One continuous trunk-to-branch path; include the parent's x-coordinate in the horizontal bus.
+  path('M '+start.x+' '+start.y+' V '+bend+' H '+left+' H '+right);
   ends.forEach(end=>path('M '+end.x+' '+bend+' V '+end.y));
  });
  tree.insertBefore(svg,tree.firstChild);
