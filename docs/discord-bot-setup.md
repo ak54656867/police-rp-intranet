@@ -48,7 +48,8 @@ supabase functions deploy discord-interactions --no-verify-jwt
 
 ```sh
 supabase secrets set DISCORD_PUBLIC_KEY=개발자포털에서복사한PublicKey
-supabase secrets set DISCORD_GUILD_ID=디스코드서버ID
+supabase secrets set DISCORD_GUILD_ID=1563868821880709182
+supabase secrets set DISCORD_CHANNEL_ID=1563868823902490758
 ```
 
 `SUPABASE_URL`과 `SUPABASE_SERVICE_ROLE_KEY`는 Supabase Edge Functions에 기본 제공됩니다. 함수 내부에서만 DB 쓰기에 사용됩니다. **Service role key와 Discord bot token은 웹사이트 코드, Discord 채팅, GitHub에 올리지 마세요.** 이 기능은 실행 자체에는 봇 토큰이 필요 없고, 명령 등록 스크립트 실행 때만 필요합니다.
@@ -66,7 +67,7 @@ $env:DISCORD_GUILD_ID="RP Discord 서버 ID"
 node scripts/register-discord-commands.mjs
 ```
 
-명령은 지정한 서버에만 등록되어 테스트할 때 바로 표시됩니다. 토큰을 다시 발급해야 하는지 확인하고, 기존 토큰이 있다면 Reset Token을 누르지 마세요. 토큰을 잃어버렸거나 새 Bot Token을 만들어야 할 때에만 안전하게 발급하고 사용 후 환경 변수에서 지우세요.
+명령은 지정한 서버에만 등록되어 테스트할 때 바로 표시됩니다. 함수는 `DISCORD_GUILD_ID`와 `DISCORD_CHANNEL_ID`가 모두 일치하는 서버·채널에서만 작동하며, 둘 중 하나라도 설정되지 않으면 요청을 거부합니다. 토큰을 다시 발급해야 하는지 확인하고, 기존 토큰이 있다면 Reset Token을 누르지 마세요. 토큰을 잃어버렸거나 새 Bot Token을 만들어야 할 때에만 안전하게 발급하고 사용 후 환경 변수에서 지우세요.
 
 ## 5. 권한
 
@@ -82,6 +83,7 @@ node scripts/register-discord-commands.mjs
 
 - [ ] migration SQL 성공
 - [ ] Discord ID가 profiles에 채워짐
+- [ ] `DISCORD_GUILD_ID`와 `DISCORD_CHANNEL_ID`가 실제 대상 서버·채널 ID와 일치함
 - [ ] Edge Function secrets 설정 및 배포
 - [ ] Interactions Endpoint URL 저장 성공 (Discord가 PING/PONG 검증)
 - [ ] 명령 등록 스크립트 실행 성공
