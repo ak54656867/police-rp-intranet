@@ -12,6 +12,7 @@ const COMMANDS = {
   vehicleSpawn: "차량스폰",
   vehicleDelete: "차량삭제",
   custody: "구금",
+  intranet: "인트라넷",
 };
 
 type Json = Record<string, unknown>;
@@ -347,6 +348,10 @@ Deno.serve(async (request) => {
     const requiredChannel = Deno.env.get("DISCORD_CHANNEL_ID");
     if (!requiredGuild || interaction.guild_id !== requiredGuild) return interactionResponse("등록된 RP 서버에서만 사용할 수 있습니다.");
     if (!requiredChannel || interaction.channel_id !== requiredChannel) return interactionResponse("지정된 Discord 채널에서만 사용할 수 있습니다.");
+
+    if (command === COMMANDS.intranet) {
+      return interactionResponse("경찰청 통합 인트라넷: https://police-rp-intranet.aclclouds.online/");
+    }
 
     if (command === COMMANDS.vehicleSpawn) {
       return modalResponse("vehicle_spawn", "차량 스폰 기록", [
