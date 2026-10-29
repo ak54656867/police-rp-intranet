@@ -7,6 +7,14 @@ alter table public.profiles
   add column if not exists reviewed_by_discord text,
   add column if not exists reviewed_at timestamptz;
 
+-- Organization lists and permission groups are stored as shared_records list rows.
+alter table public.shared_records
+  drop constraint if exists shared_records_module_check;
+alter table public.shared_records
+  add constraint shared_records_module_check
+  check (module in ('personnel','attendance','incidents','wanted','dispatch','leave','assets','notices','documents','audit','fines','departments','positions','orgPermissions','permissionSets'));
+
+
 -- Applicants may update their own application identity and requested placement, but
 -- cannot change their assigned rank, department, position, role, approval, or access.
 create or replace function public.protect_self_profile_update()
