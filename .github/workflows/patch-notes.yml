@@ -87,6 +87,21 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
+      - name: Deploy the updated announcement Edge Function
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          PATCH_NOTES_SECRET: ${{ secrets.PATCH_NOTES_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$SUPABASE_ACCESS_TOKEN" || -z "$SUPABASE_PROJECT_REF" || -z "$PATCH_NOTES_SECRET" ]]; then
+            echo "::error::Configure SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF, and PATCH_NOTES_SECRET in GitHub Actions secrets."
+            exit 1
+          fi
+          npx --yes supabase@latest secrets set "PATCH_NOTES_SECRET=$PATCH_NOTES_SECRET" --project-ref "$SUPABASE_PROJECT_REF"
+          npx --yes supabase@latest functions deploy discord-interactions --project-ref "$SUPABASE_PROJECT_REF" --use-api
+
       - name: Publish through the existing intranet announcement system
         if: steps.notes.outputs.skip != 'true'
         env:
