@@ -751,7 +751,7 @@ as $$
   select case
     when public.current_role() = 'admin' then true
     when p_module in ('audit','departments','positions','orgPermissions','permissionSets') then false
-    when public.has_assigned_permission_set() then public.has_org_module_permission(p_module, 'update')
+    when public.has_assigned_permission_set() then (public.has_org_module_permission(p_module, 'update') or public.has_org_module_permission(p_module, 'approve'))
     when public.current_role() in ('chief','department_head','hr_manager') then true
     when public.current_role() = 'officer'
       then p_module in ('attendance','incidents','wanted','dispatch','leave','fines')
@@ -791,6 +791,7 @@ create policy "shared records read approved members"
       not public.has_assigned_permission_set()
       or public.current_role() in ('admin','chief','department_head','hr_manager')
       or public.has_org_module_permission(module, 'read')
+      or public.has_org_module_permission(module, 'approve')
     )
   );
 
