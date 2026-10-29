@@ -1,0 +1,139 @@
+name: Discord Patch Notes
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  announce:
+    name: Version and announce patch notes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository and tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Calculate semantic version
+        id: version
+        shell: bash
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          latest_tag="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)"
+          if [[ -z "$latest_tag" ]]; then
+            latest_tag="v1.0.0"
+          fi
+          current="${latest_tag#v}"
+          IFS='.' read -r major minor patch <<< "$current"
+
+          message="$(printf '%s' "$COMMIT_MESSAGE" | tr '[:upper:]' '[:lower:]')"
+          if [[ "$message" == *"[major]"* || "$message" == *"[대개편]"* ]]; then
+            major=$((major + 1)); minor=0; patch=0
+            kind="대규모 개편"
+          elif [[ "$message" == *"[minor]"* || "$message" == *"[기능]"* ]]; then
+            minor=$((minor + 1)); patch=0
+            kind="기능 업데이트"
+          else
+            patch=$((patch + 1))
+            kind="보안·오류 수정 및 개선"
+          fi
+
+          version="v${major}.${minor}.${patch}"
+          if git rev-parse "$version" >/dev/null 2>&1; then
+            echo "Tag $version already exists; refusing to create a duplicate release." >&2
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$version" -m "Release $version"
+          git push origin "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+
+      - name: Build patch notes from pushed commits
+        id: notes
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$BEFORE_SHA" =~ ^0+$ ]] || ! git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+            range="$AFTER_SHA"
+          else
+            range="$BEFORE_SHA..$AFTER_SHA"
+          fi
+
+          notes="$(git log "$range" --no-merges --format='- %s' | head -n 15)"
+          if [[ -z "$notes" ]]; then
+            notes="- 인트라넷 업데이트 및 안정성 개선"
+          fi
+          {
+            echo 'body<<PATCH_NOTES_EOF'
+            printf '%s\n' "$notes"
+            echo 'PATCH_NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Post patch notes to Discord
+        shell: bash
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_ANNOUNCEMENTS_WEBHOOK }}
+          VERSION: ${{ steps.version.outputs.version }}
+          UPDATE_KIND: ${{ steps.version.outputs.kind }}
+          PATCH_NOTES: ${{ steps.notes.outputs.body }}
+          REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$DISCORD_WEBHOOK" ]]; then
+            echo "::error::GitHub Actions secret DISCORD_ANNOUNCEMENTS_WEBHOOK is missing."
+            exit 1
+          fi
+
+          export MESSAGE
+          MESSAGE="$(cat <<EOF
+@here
+# [경찰 RP 인트라넷 업데이트] ${VERSION}
+
+안녕하십니까. 경찰 RP 인트라넷 운영팀입니다.
+
+**업데이트 유형:** ${UPDATE_KIND}
+
+**패치 사항**
+${PATCH_NOTES}
+
+**적용 사이트:** https://police-rp-intranet.aclclouds.online
+**변경 내역:** ${COMMIT_URL}
+**버전 관리:** ${REPOSITORY_URL}/releases
+
+앞으로도 안정적인 운영을 위해 지속적으로 개선하겠습니다.
+EOF
+)"
+          python - <<'PY'
+          import json, os, urllib.request
+          webhook = os.environ["DISCORD_WEBHOOK"]
+          message = os.environ["MESSAGE"]
+          payload = {
+              "content": message[:1900],
+              "allowed_mentions": {"parse": ["everyone"]} if False else {"parse": ["here"]},
+          }
+          request = urllib.request.Request(
+              webhook,
+              data=json.dumps(payload).encode("utf-8"),
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          with urllib.request.urlopen(request, timeout=20) as response:
+              if response.status not in (200, 204):
+                  raise SystemExit(f"Discord webhook returned HTTP {response.status}")
+          print("Patch notes posted to Discord.")
+          PY
