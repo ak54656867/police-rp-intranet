@@ -77,7 +77,7 @@ jobs:
             echo
             echo "**변경된 파일:**"
             while IFS= read -r file; do
-              [[ -n "$file" ]] && echo "- `$file`"
+              [[ -n "$file" ]] && printf -- '- `%s`\n' "$file"
             done <<< "$FILES"
             echo
             echo "_변경 사항은 실제 Git 커밋 및 변경 파일 기준으로 자동 생성되었습니다._"
