@@ -397,23 +397,35 @@ create policy "shared records update by role"
   on public.shared_records for update to authenticated
   using (
     public.can_access_intranet()
-    and public.can_update_shared_module(module)
     and (
-      module not in ('attendance','leave')
-      or public.current_role() in ('admin','chief','department_head','hr_manager')
-      or (module='attendance' and payload->>'userId'=auth.uid()::text)
-      or (module='leave' and payload->>'userId'=auth.uid()::text and payload->>'status'='신청')
+      (module in ('incidents','fines') and payload->>'userId'=auth.uid()::text)
+      or (
+        module not in ('incidents','fines')
+        and public.can_update_shared_module(module)
+        and (
+          module not in ('attendance','leave')
+          or public.current_role() in ('admin','chief','department_head','hr_manager')
+          or (module='attendance' and payload->>'userId'=auth.uid()::text)
+          or (module='leave' and payload->>'userId'=auth.uid()::text and payload->>'status'='申請')
+        )
+      )
     )
   )
   with check (
     public.can_access_intranet()
     and updated_by=auth.uid()
-    and public.can_update_shared_module(module)
     and (
-      module not in ('attendance','leave')
-      or public.current_role() in ('admin','chief','department_head','hr_manager')
-      or (module='attendance' and payload->>'userId'=auth.uid()::text)
-      or (module='leave' and payload->>'userId'=auth.uid()::text and payload->>'status'='신청')
+      (module in ('incidents','fines') and payload->>'userId'=auth.uid()::text)
+      or (
+        module not in ('incidents','fines')
+        and public.can_update_shared_module(module)
+        and (
+          module not in ('attendance','leave')
+          or public.current_role() in ('admin','chief','department_head','hr_manager')
+          or (module='attendance' and payload->>'userId'=auth.uid()::text)
+          or (module='leave' and payload->>'userId'=auth.uid()::text and payload->>'status'='申請')
+        )
+      )
     )
   );
 
