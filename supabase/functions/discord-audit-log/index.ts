@@ -17,6 +17,7 @@ async function sendWebhook(eventType: string, details: Record<string, unknown>) 
     custody: { secret: "DISCORD_CUSTODY_WEBHOOK", title: "구금 기록", color: 0xC0392B },
     vehicle: { secret: "DISCORD_VEHICLE_WEBHOOK", title: "차량 스폰 로그", color: 0x2980B9 },
     personnel: { secret: "DISCORD_PERSONNEL_WEBHOOK", title: "인사 조치 로그", color: 0x8E44AD },
+    personnel_report: { secret: "DISCORD_PERSONNEL_WEBHOOK", title: "인사보고 제출", color: 0x8E44AD },
   };
   const selected = config[eventType];
   if (!selected) throw new Error("Unsupported event type");
@@ -80,11 +81,11 @@ Deno.serve(async (req: Request) => {
   let body: any;
   try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
   const eventType = String(body?.event_type ?? "");
-  if (!["custody", "vehicle", "personnel"].includes(eventType) || !body.details || typeof body.details !== "object" || Array.isArray(body.details)) {
+  if (!["custody", "vehicle", "personnel", "personnel_report"].includes(eventType) || !body.details || typeof body.details !== "object" || Array.isArray(body.details)) {
     return json({ error: "Invalid event payload" }, 400);
   }
   if (eventType === "personnel" && profile.role !== "admin") return json({ error: "Admin role required for personnel logs" }, 403);
-  if (profile.role !== "admin") {
+  if (profile.role !== "admin" && eventType !== "personnel_report") {
     const moduleName = eventType === "custody" ? "fines" : "assets";
     const { data: groupRecord, error: groupError } = await adminClient.from("shared_records")
       .select("payload").eq("module", "permissionSets").eq("record_id", "__list__").maybeSingle();
