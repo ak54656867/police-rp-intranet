@@ -329,7 +329,7 @@ function modal(type){if(!authUser||!authProfile||!(authProfile.role==='admin'||(
  if(type!=='fine')log(labels[type]||'기록 등록',f.name||f.title||f.vehicleModel||f.code||'');
  save();closeModal();render();toast('기록을 등록했습니다.');
  if(type==='fine')await sendDiscordAudit('custody',{action:'구금 등록',subject:f.name,minutes:f.custodyMinutes,reason:f.reason,officer:f.officer,source:'인트라넷'});
- if(type==='document'&&f.category==='인사보고')await sendDiscordAudit('personnel_report',{action:'인사보고 제출',subject:f.target,reason:f.reason,changes:f.changes,reportTitle:f.title,officer:currentOfficerName(),source:'보고서 제출'});
+ if(type==='document'&&String(f.category||'').trim().includes('인사보고')){console.info('[인사로그] 인사보고 제출 감지',f.title||'제목 없음');await sendDiscordAudit('personnel_report',{action:'인사보고 제출',subject:f.target,reason:f.reason,changes:f.changes,reportTitle:f.title,officer:currentOfficerName(),source:'보고서 제출'});}
  if(type==='asset')await sendDiscordAudit('vehicle',{action:'차량 스폰',vehicleModel:f.vehicleModel,reason:f.reason,passengers:f.passengers,officer:f.spawnedBy,source:'인트라넷'});
  if(type==='person'&&authProfile?.role==='admin')await sendDiscordAudit('personnel',{action:'경찰관 등록',subject:f.name,rank:f.rank,department:f.dept,officer:currentOfficerName(),source:'인트라넷'});
  if(type==='notice'&&cloudReady&&supabaseClient&&authUser){
@@ -345,9 +345,9 @@ render();
 
 function getCloudConfig(){const defaults={url:'https://lnauhbnisreigaqoeabq.supabase.co',key:'sb_publishable_j43MRec1n_BNhmoJoHaI6A_P0Vtuc5O'};try{return {...defaults,...(JSON.parse(localStorage.getItem('policeRpCloudConfig'))||{})}}catch{return defaults}}
 async function sendDiscordAudit(eventType,details){
- if(!supabaseClient||!authUser||!cloudReady)return;
- try{const {error}=await supabaseClient.functions.invoke('discord-audit-log',{body:{event_type:eventType,details}});if(error)throw error;}
- catch(e){console.warn('Discord audit webhook failed:',e.message||e);toast('기록은 저장됐지만 Discord 로그 전송에 실패했습니다. 웹훅 설정을 확인하세요.');}
+ if(!supabaseClient||!authUser||!cloudReady){console.error('Discord audit skipped: cloud/auth not ready',eventType,{supabase:!!supabaseClient,auth:!!authUser,cloudReady});toast('기록은 저장됐지만 Discord 로그를 보내지 못했습니다. 클라우드 로그인 상태를 확인하세요.');return false;}
+ try{const {data,error}=await supabaseClient.functions.invoke('discord-audit-log',{body:{event_type:eventType,details}});if(error)throw error;if(data?.error)throw new Error(data.error);return true;}
+ catch(e){console.error('Discord audit webhook failed:',eventType,e);toast('기록은 저장됐지만 Discord 로그 전송 실패: '+(e.message||'함수 배포 및 웹훅 설정을 확인하세요.'));return false;}
 }
 let lastSecurityEventUserId=null;
 async function recordSecurityEvent(eventType='session_start'){
