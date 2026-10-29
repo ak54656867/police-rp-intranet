@@ -172,7 +172,7 @@ function drawOrgConnectors(){
   const start=point(parent,'bottom'),ends=children.map(card=>point(card,'top'));
   const bend=Math.min(...ends.map(p=>p.y))-Math.max(10,(Math.min(...ends.map(p=>p.y))-start.y)/2);
   const xs=ends.map(p=>p.x),left=Math.min(...xs),right=Math.max(...xs);
-  path('M '+start.x+' '+start.y+' V '+bend+(left===right?'':' H '+right));
+  path('M '+start.x+' '+start.y+' V '+bend);
   if(left!==right)path('M '+left+' '+bend+' H '+right);
   ends.forEach(end=>path('M '+end.x+' '+bend+' V '+end.y));
  });
@@ -308,7 +308,7 @@ function modal(type){if(!authUser||!authProfile||!(authProfile.role==='admin'||(
  save();closeModal();render();toast('기록을 등록했습니다.');
  if(type==='fine')await sendDiscordAudit('custody',{action:'구금 등록',subject:f.name,minutes:f.custodyMinutes,reason:f.reason,officer:f.officer,source:'인트라넷'});
  if(type==='asset')await sendDiscordAudit('vehicle',{action:'차량 스폰',vehicleModel:f.vehicleModel,reason:f.reason,passengers:f.passengers,officer:f.spawnedBy,source:'인트라넷'});
- if(type==='person')await sendDiscordAudit('personnel',{action:'경찰관 등록',subject:f.name,rank:f.rank,department:f.dept,officer:currentOfficerName(),source:'인트라넷'});
+ if(type==='person'&&authProfile?.role==='admin')await sendDiscordAudit('personnel',{action:'경찰관 등록',subject:f.name,rank:f.rank,department:f.dept,officer:currentOfficerName(),source:'인트라넷'});
  if(type==='notice'&&cloudReady&&supabaseClient&&authUser){
   await syncQueue;
   const {error:discordSyncError}=await supabaseClient.functions.invoke('discord-interactions',{body:{kind:'announcement-publish',noticeId:id}});
