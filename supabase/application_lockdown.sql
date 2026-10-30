@@ -2,11 +2,9 @@
 -- Supabase SQL Editor에서 한 번 실행하세요.
 begin;
 
--- Discord OAuth identity는 Discord provider ID를 기준으로 전역 1개 계정만 연결되도록 보장합니다.
--- Supabase의 기존 auth identity 데이터와 충돌하면 이 인덱스 생성 단계에서 중단됩니다.
-create unique index if not exists auth_discord_identity_one_account
-  on auth.identities (provider_id)
-  where provider = 'discord';
+-- Supabase Auth가 Discord OAuth identity의 연결을 관리합니다.
+-- auth.identities는 관리형 스키마이므로 일반 SQL Editor에서 직접 인덱스를 만들지 않습니다.
+-- 동일 Discord 로그인은 기존 auth.users 계정으로 연결되며, 프로필도 auth.uid()당 1개입니다.
 
 -- 동일 Roblox 계정명으로 여러 인트라넷 계정을 만드는 것도 차단합니다.
 -- 기존 중복값이 있다면 아래 인덱스 생성 전에 중복 계정을 정리해야 합니다.
