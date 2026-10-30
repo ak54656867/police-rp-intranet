@@ -464,7 +464,7 @@ function showOnboarding(){
   const submit=e.target.querySelector('button[type="submit"]');submit.disabled=true;
   const f=Object.fromEntries(new FormData(e.target));f.roblox_username=String(f.roblox_username||'').trim();f.discord_username=String(f.discord_username||'').trim();
   if(!f.roblox_username||!f.discord_username){submit.disabled=false;toast('로블록스 닉네임과 디스코드 닉네임을 모두 입력하세요.');return;}
-  const {data:updated,error}=await supabaseClient.from('profiles').update({roblox_username:f.roblox_username,discord_username:f.discord_username,application_submitted:true}).eq('id',authUser.id).eq('application_submitted',false).select('*').single();
+  const {data:updated,error}=await supabaseClient.from('profiles').update({roblox_username:f.roblox_username,discord_username:f.discord_username,application_submitted:true}).eq('id',authUser.id).eq('status',authProfile.status).select('*').single();
   if(error||!updated){submit.disabled=false;toast('신청 저장 실패: '+(error?.message||'이미 신청이 접수되었을 수 있습니다.'));return;}
   authProfile=updated;updateAuthUI();showOnboarding();toast('가입 신청을 제출했습니다. 신청 내용이 잠겼습니다.');
  };
