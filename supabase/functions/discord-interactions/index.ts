@@ -71,6 +71,11 @@ function interactionResponse(content: string) {
 async function aiAssistantAction(db: ReturnType<typeof createClient>, interaction: any) {
   const user = discordUser(interaction);
   if (!user?.id) throw new Error("Discord 사용자 정보를 확인할 수 없습니다.");
+  // AI 운영 권한은 최고 관리자 Discord 계정에만 허용한다.
+  const aiOwnerDiscordId = "285388357272600578";
+  if (String(user.id) !== aiOwnerDiscordId) {
+    throw new Error("이 AI 명령은 최고 관리자 전용입니다.");
+  }
   const { data: profile, error } = await db.from("profiles")
     .select("id,roblox_username,display_name,role,status,active,department,rank,position")
     .eq("discord_id", user.id)
