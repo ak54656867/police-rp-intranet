@@ -81,13 +81,13 @@ async function aiAssistantAction(db: ReturnType<typeof createClient>, interactio
   }
   const prompt = String(interaction.data?.options?.find((option: any) => option.name === "prompt")?.value ?? "").trim();
   if (!prompt) throw new Error("명령 내용을 입력해 주세요.");
-  const apiKey = Deno.env.get("OPENAI_API_KEY");
-  if (!apiKey) throw new Error("OPENAI_API_KEY 서버 Secret이 설정되지 않았습니다.");
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const apiKey = Deno.env.get("GROQ_API_KEY");
+  if (!apiKey) throw new Error("GROQ_API_KEY 서버 Secret이 설정되지 않았습니다.");
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "gpt-4.1-mini",
+      model: "llama-3.3-70b-versatile",
       messages: [
         { role: "system", content: "너는 한국어 경찰 RP 인트라넷 보조 AI다. 친절하고 간결하게 답한다. 실제 DB 작업이나 권한 변경을 수행했다고 거짓말하지 않는다. 현재 연결된 기능은 질문 답변뿐이며, 출근·퇴근 등 실제 처리는 기존 전용 슬래시 명령을 사용하라고 안내한다. 승인된 사용자의 표시 정보: " + JSON.stringify({ name: profile.roblox_username || profile.display_name, rank: profile.rank, position: profile.position, department: profile.department }) },
         { role: "user", content: prompt.slice(0, 1500) },
@@ -98,9 +98,9 @@ async function aiAssistantAction(db: ReturnType<typeof createClient>, interactio
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) {
-    console.error("OpenAI API request failed", response.status, JSON.stringify(result).slice(0, 1000));
-    if (response.status === 401) throw new Error("OpenAI API 키가 유효하지 않습니다. Supabase Secret을 확인해 주세요.");
-    if (response.status === 429) throw new Error("OpenAI API 사용 한도 또는 결제 한도를 확인해 주세요.");
+    console.error("Groq API request failed", response.status, JSON.stringify(result).slice(0, 1000));
+    if (response.status === 401) throw new Error("Groq API 키가 유효하지 않습니다. Supabase Secret을 확인해 주세요.");
+    if (response.status === 429) throw new Error("Groq API 사용량 제한 또는 API 키 설정을 확인해 주세요.");
     throw new Error("AI 응답을 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.");
   }
   const answer = String(result.choices?.[0]?.message?.content ?? "").trim();
