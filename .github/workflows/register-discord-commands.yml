@@ -1,0 +1,35 @@
+name: Register Discord slash commands
+on:
+  workflow_dispatch:
+    inputs:
+      application_id:
+        description: Discord Application ID
+        required: true
+        type: string
+      guild_id:
+        description: Discord Server ID
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Register guild commands
+        env:
+          DISCORD_APPLICATION_ID: ${{ inputs.application_id }}
+          DISCORD_GUILD_ID: ${{ inputs.guild_id }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+        run: |
+          if [ -z "$DISCORD_BOT_TOKEN" ]; then
+            echo "::error::Missing DISCORD_BOT_TOKEN repository secret"
+            exit 1
+          fi
+          node scripts/register-discord-commands.mjs
