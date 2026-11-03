@@ -196,6 +196,13 @@ function discordLabel(user: any) {
 
 function permissionAllowed(profile: any, groups: any[], moduleName: string, action: string) {
   if (profile.role === "admin") return true;
+  // Approved, active personnel may record their own attendance without a separate permission group.
+  if (
+    moduleName === "attendance" &&
+    action === "create" &&
+    profile.status === "approved" &&
+    profile.active === true
+  ) return true;
   const groupIds = Array.isArray(profile.permissions) ? profile.permissions.map(String) : [];
   return groups.some((group) =>
     group && groupIds.includes(String(group.id)) &&
