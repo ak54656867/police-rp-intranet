@@ -87,7 +87,7 @@ async function aiAssistantAction(db: ReturnType<typeof createClient>, interactio
     method: "POST",
     headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-120b",
       messages: [
         { role: "system", content: "너는 한국어 경찰 RP 인트라넷 보조 AI다. 친절하고 간결하게 답한다. 실제 DB 작업이나 권한 변경을 수행했다고 거짓말하지 않는다. 현재 연결된 기능은 질문 답변뿐이며, 출근·퇴근 등 실제 처리는 기존 전용 슬래시 명령을 사용하라고 안내한다. 승인된 사용자의 표시 정보: " + JSON.stringify({ name: profile.roblox_username || profile.display_name, rank: profile.rank, position: profile.position, department: profile.department }) },
         { role: "user", content: prompt.slice(0, 1500) },
