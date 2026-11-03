@@ -136,6 +136,46 @@ async function aiManageRecords(db: ReturnType<typeof createClient>, profile: any
   throw new Error("지원하지 않는 AI 작업입니다.");
 }
 
+async function aiForceCloseIncident(db: ReturnType<typeof createClient>, profile: any, args: any) {
+  const recordId = String(args.record_id ?? "").trim();
+  const reason = String(args.reason ?? "").trim();
+  if (!recordId || recordId.length > 120) throw new Error("종결할 사건의 record_id가 필요합니다.");
+  if (!reason || reason.length > 500) throw new Error("강제 종결 사유를 1~500자로 입력해 주세요.");
+
+  const { data: existing, error: readError } = await db.from("shared_records")
+    .select("record_id,payload")
+    .eq("module", "incidents")
+    .eq("record_id", recordId)
+    .maybeSingle();
+  if (readError) throw readError;
+  if (!existing) throw new Error("해당 사건을 찾을 수 없습니다. 사건 record_id를 확인해 주세요.");
+
+  const current = existing.payload && typeof existing.payload === "object" ? existing.payload : {};
+  const currentStatus = String((current as any).status ?? "");
+  if (["종결", "종료", "closed", "completed"].includes(currentStatus.toLowerCase())) {
+    throw new Error("이미 종결된 사건입니다.");
+  }
+
+  const closedAt = new Date().toISOString();
+  const updatedPayload = {
+    ...current,
+    status: "종결",
+    closedAt,
+    closedBy: profile.roblox_username || profile.display_name || "최고 관리자",
+    forceClosed: true,
+    closeReason: reason,
+    source: "Discord AI",
+  };
+  const { error: updateError } = await db.from("shared_records")
+    .update({ payload: updatedPayload, updated_by: profile.id })
+    .eq("module", "incidents")
+    .eq("record_id", recordId);
+  if (updateError) throw updateError;
+
+  await writeAiAudit(db, profile, "AI 강제 사건 종결", recordId, reason);
+  return { success: true, operation: "force_close_incident", record_id: recordId, status: "종결", closed_at: closedAt };
+}
+
 async function aiManageProfile(db: ReturnType<typeof createClient>, profile: any, operation: string, args: any) {
   const target = String(args.discord_id ?? "").trim();
   if (!target) throw new Error("대상 Discord ID가 필요합니다.");
@@ -364,6 +404,7 @@ async function aiAssistantAction(db: ReturnType<typeof createClient>, interactio
     { type: "function", function: { name: "create_record", description: "인트라넷 모듈에 새 기록을 생성한다. 사용자가 명시적으로 생성 요청한 경우에만 호출한다.", parameters: { type: "object", properties: { module: { type: "string", minLength: 1, maxLength: 80 }, record_id: { type: "string" }, payload: { type: "object" }, reason: { type: "string" } }, required: ["module", "payload", "reason"], additionalProperties: false } } },
     { type: "function", function: { name: "update_record", description: "기존 인트라넷 기록의 필드를 수정한다. payload는 변경할 필드만 전달한다.", parameters: { type: "object", properties: { module: { type: "string", minLength: 1, maxLength: 80 }, record_id: { type: "string" }, payload: { type: "object" }, reason: { type: "string" } }, required: ["module", "record_id", "payload", "reason"], additionalProperties: false } } },
     { type: "function", function: { name: "delete_record", description: "기존 인트라넷 기록을 영구 삭제한다. 사용자가 삭제를 명시적으로 요청한 경우에만 호출한다.", parameters: { type: "object", properties: { module: { type: "string", minLength: 1, maxLength: 80 }, record_id: { type: "string" }, reason: { type: "string" } }, required: ["module", "record_id", "reason"], additionalProperties: false } } },
+    { type: "function", function: { name: "force_close_incident", description: "사건 모듈의 지정된 사건을 강제로 종결한다. 먼저 사건 기록을 조회해 정확한 record_id를 확인하고, 사용자가 강제 종결을 명시적으로 요청했을 때만 실행한다. 반드시 종결 사유를 기록한다.", parameters: { type: "object", properties: { record_id: { type: "string" }, reason: { type: "string", minLength: 1, maxLength: 500 } }, required: ["record_id", "reason"], additionalProperties: false } } },
     { type: "function", function: { name: "get_profile", description: "Discord ID로 인트라넷 계정을 조회한다.", parameters: { type: "object", properties: { discord_id: { type: "string" } }, required: ["discord_id"], additionalProperties: false } } },
     { type: "function", function: { name: "update_profile", description: "Discord ID로 인트라넷 계정의 인사정보와 권한을 수정한다. 사용자가 명시적으로 요청한 경우에만 호출한다.", parameters: { type: "object", properties: { discord_id: { type: "string" }, changes: { type: "object" }, reason: { type: "string" } }, required: ["discord_id", "changes", "reason"], additionalProperties: false } } },
     { type: "function", function: { name: "github_get_file", description: "경찰 RP 인트라넷 저장소의 비보호 파일을 조회한다.", parameters: { type: "object", properties: { path: { type: "string" }, ref: { type: "string" } }, required: ["path"], additionalProperties: false } } },
@@ -410,6 +451,7 @@ async function aiAssistantAction(db: ReturnType<typeof createClient>, interactio
       catch { throw new Error("AI 작업 인수를 해석하지 못했습니다."); }
       let output: unknown;
       try {
+        if (name === "force_close_incident") output = await aiForceCloseIncident(db, profile, args);
         if (name === "get_profile" || name === "update_profile") output = await aiManageProfile(db, profile, name, args);
         else if (name.startsWith("github_")) output = await aiGithubAction(name, args);
         else if (name.startsWith("supabase_")) output = await aiSupabaseAction(name, args);
