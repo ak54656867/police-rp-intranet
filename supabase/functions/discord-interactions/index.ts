@@ -180,6 +180,88 @@ async function writeAiAudit(db: ReturnType<typeof createClient>, profile: any, a
   if (error) console.error("AI audit log write failed", error);
 }
 
+
+const AI_GITHUB_REPO = "ak54656867/police-rp-intranet";
+const AI_GITHUB_PROTECTED_PATHS = [
+  /^supabase\\/config\\.toml$/,
+  /^supabase\\/functions\\/discord-interactions\\/index\\.ts$/,
+  /^src\\/.*auth/i,
+  /^src\\/.*login/i,
+  /^src\\/.*oauth/i,
+  /^\\.github\\/workflows\\/.*$/,
+];
+
+function assertAiGithubPath(path: string) {
+  const normalized = path.replace(/^\\/+/, "").replace(/\\\\/g, "/");
+  if (!normalized || normalized.split("/").some((part) => part === "..") ||
+      AI_GITHUB_PROTECTED_PATHS.some((pattern) => pattern.test(normalized))) {
+    throw new Error("인증·로그인·OAuth·배포 핵심 파일은 AI가 직접 변경할 수 없습니다.");
+  }
+  return normalized;
+}
+
+async function aiGithubRequest(path: string, init: RequestInit = {}) {
+  const token = Deno.env.get("GITHUB_TOKEN");
+  if (!token) throw new Error("GITHUB_TOKEN 서버 Secret이 설정되지 않았습니다.");
+  const response = await fetch("https://api.github.com" + path, {
+    ...init,
+    headers: {
+      "Accept": "application/vnd.github+json",
+      "Authorization": "Bearer " + token,
+      "X-GitHub-Api-Version": "2022-11-28",
+      "Content-Type": "application/json",
+      ...(init.headers ?? {}),
+    },
+  });
+  const body = await response.text();
+  let data: any = {};
+  try { data = body ? JSON.parse(body) : {}; } catch { data = { message: body.slice(0, 500) }; }
+  if (!response.ok) {
+    console.error("AI GitHub API failed", response.status, JSON.stringify(data).slice(0, 1000));
+    throw new Error("GitHub API 오류 (" + response.status + "): " + String(data.message ?? "요청 실패").slice(0, 250));
+  }
+  return data;
+}
+
+async function aiGithubAction(operation: string, args: any) {
+  if (operation === "github_get_file") {
+    const path = assertAiGithubPath(String(args.path ?? ""));
+    const ref = String(args.ref ?? "main");
+    const data = await aiGithubRequest("/repos/" + AI_GITHUB_REPO + "/contents/" + path.split("/").map(encodeURIComponent).join("/") + "?ref=" + encodeURIComponent(ref));
+    if (Array.isArray(data) || data.type !== "file") throw new Error("일반 파일만 조회할 수 있습니다.");
+    const content = atob(String(data.content ?? "").replace(/\\s/g, ""));
+    const bytes = Uint8Array.from(content, (c) => c.charCodeAt(0));
+    return { path, sha: data.sha, content: new TextDecoder().decode(bytes).slice(0, 16000), truncated: bytes.length > 16000 };
+  }
+  if (operation === "github_update_file") {
+    const path = assertAiGithubPath(String(args.path ?? ""));
+    const content = String(args.content ?? "");
+    const message = String(args.message ?? "").slice(0, 120);
+    if (!message || content.length > 90000) throw new Error("커밋 메시지가 없거나 파일이 너무 큽니다.");
+    const ref = String(args.ref ?? "main");
+    const current = await aiGithubRequest("/repos/" + AI_GITHUB_REPO + "/contents/" + path.split("/").map(encodeURIComponent).join("/") + "?ref=" + encodeURIComponent(ref));
+    if (Array.isArray(current) || current.type !== "file") throw new Error("기존 파일만 수정할 수 있습니다.");
+    const encoded = btoa(String.fromCharCode(...new TextEncoder().encode(content)));
+    const result = await aiGithubRequest("/repos/" + AI_GITHUB_REPO + "/contents/" + path.split("/").map(encodeURIComponent).join("/"), {
+      method: "PUT",
+      body: JSON.stringify({ message, content: encoded, sha: current.sha, branch: ref }),
+    });
+    return { success: true, path, commit_sha: result.commit?.sha, html_url: result.content?.html_url };
+  }
+  if (operation === "github_dispatch_workflow") {
+    const workflow = String(args.workflow ?? "");
+    if (!/^[a-zA-Z0-9._-]+\\.ya?ml$/.test(workflow) || workflow.includes("..")) throw new Error("허용되지 않는 워크플로 파일명입니다.");
+    const ref = String(args.ref ?? "main");
+    if (ref !== "main") throw new Error("현재 AI 배포 실행은 main 브랜치만 허용합니다.");
+    const inputs = args.inputs && typeof args.inputs === "object" && !Array.isArray(args.inputs) ? args.inputs : {};
+    await aiGithubRequest("/repos/" + AI_GITHUB_REPO + "/actions/workflows/" + encodeURIComponent(workflow) + "/dispatches", {
+      method: "POST", body: JSON.stringify({ ref, inputs }),
+    });
+    return { success: true, workflow, ref, message: "GitHub Actions 실행 요청을 전송했습니다. 완료 여부는 Actions에서 별도 확인해야 합니다." };
+  }
+  throw new Error("지원하지 않는 GitHub 작업입니다.");
+}
+
 async function aiAssistantAction(db: ReturnType<typeof createClient>, interaction: any) {
   const user = discordUser(interaction);
   if (!user?.id) throw new Error("Discord 사용자 정보를 확인할 수 없습니다.");
@@ -206,9 +288,12 @@ async function aiAssistantAction(db: ReturnType<typeof createClient>, interactio
     { type: "function", function: { name: "delete_record", description: "기존 인트라넷 기록을 영구 삭제한다. 사용자가 삭제를 명시적으로 요청한 경우에만 호출한다.", parameters: { type: "object", properties: { module: { type: "string", minLength: 1, maxLength: 80 }, record_id: { type: "string" }, reason: { type: "string" } }, required: ["module", "record_id", "reason"], additionalProperties: false } } },
     { type: "function", function: { name: "get_profile", description: "Discord ID로 인트라넷 계정을 조회한다.", parameters: { type: "object", properties: { discord_id: { type: "string" } }, required: ["discord_id"], additionalProperties: false } } },
     { type: "function", function: { name: "update_profile", description: "Discord ID로 인트라넷 계정의 인사정보와 권한을 수정한다. 사용자가 명시적으로 요청한 경우에만 호출한다.", parameters: { type: "object", properties: { discord_id: { type: "string" }, changes: { type: "object" }, reason: { type: "string" } }, required: ["discord_id", "changes", "reason"], additionalProperties: false } } },
+    { type: "function", function: { name: "github_get_file", description: "경찰 RP 인트라넷 저장소의 비보호 파일을 조회한다.", parameters: { type: "object", properties: { path: { type: "string" }, ref: { type: "string" } }, required: ["path"], additionalProperties: false } } },
+    { type: "function", function: { name: "github_update_file", description: "경찰 RP 인트라넷 저장소의 비보호 파일을 커밋으로 수정한다. 사용자가 명시적으로 수정 요청한 경우에만 호출한다.", parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" }, message: { type: "string" }, ref: { type: "string" } }, required: ["path", "content", "message"], additionalProperties: false } } },
+    { type: "function", function: { name: "github_dispatch_workflow", description: "허용된 GitHub Actions 워크플로를 main 브랜치에서 실행한다.", parameters: { type: "object", properties: { workflow: { type: "string" }, ref: { type: "string" }, inputs: { type: "object" } }, required: ["workflow"], additionalProperties: false } } },
   ];
   const messages: any[] = [
-    { role: "system", content: "너는 경찰 RP 인트라넷 최고 관리자 전용 운영 AI다. 사용자의 자연어 요청을 분석해 필요한 경우 제공된 도구를 실제 호출한다. 조회 요청은 조회 도구를 사용한다. 생성·수정·삭제는 사용자가 해당 변경을 분명히 요청했을 때만 실행하며, 정보가 부족하면 먼저 질문한다. 삭제는 정확한 대상과 record_id가 확인되지 않으면 실행하지 않는다. 실행 전 조회로 대상을 특정하고, 성공 결과가 반환된 뒤에만 완료라고 말한다. 로그인, Discord OAuth, 인증·보안 설정, 임의 SQL, 임의 코드 실행은 도구로 변경할 수 없다. 업무 모듈 전체를 관리할 수 있다. 시스템 보호 모듈은 수정할 수 없다. 관리자 표시정보: " + JSON.stringify({ name: profile.roblox_username || profile.display_name, rank: profile.rank, position: profile.position, department: profile.department }) },
+    { role: "system", content: "너는 경찰 RP 인트라넷 최고 관리자 전용 운영 AI다. 사용자의 자연어 요청을 분석해 필요한 경우 제공된 도구를 실제 호출한다. 조회 요청은 조회 도구를 사용한다. 생성·수정·삭제는 사용자가 해당 변경을 분명히 요청했을 때만 실행하며, 정보가 부족하면 먼저 질문한다. 삭제는 정확한 대상과 record_id가 확인되지 않으면 실행하지 않는다. 실행 전 조회로 대상을 특정하고, 성공 결과가 반환된 뒤에만 완료라고 말한다. 로그인, Discord OAuth, 인증·보안 설정, Edge Function 핵심 코드, GitHub Actions 워크플로, 임의 SQL, 임의 코드 실행은 도구로 변경할 수 없다. GitHub의 비보호 일반 파일 조회·수정 및 허용된 main 배포 워크플로 실행은 가능하다. 업무 모듈 전체를 관리할 수 있다. 시스템 보호 모듈은 수정할 수 없다. 관리자 표시정보: " + JSON.stringify({ name: profile.roblox_username || profile.display_name, rank: profile.rank, position: profile.position, department: profile.department }) },
     { role: "user", content: prompt.slice(0, 1500) },
   ];
 
@@ -242,6 +327,7 @@ async function aiAssistantAction(db: ReturnType<typeof createClient>, interactio
       let output: unknown;
       try {
         if (name === "get_profile" || name === "update_profile") output = await aiManageProfile(db, profile, name, args);
+        else if (name.startsWith("github_")) output = await aiGithubAction(name, args);
         else output = await aiManageRecords(db, profile, name, args);
       }
       catch (error) { output = { success: false, error: error instanceof Error ? error.message : "작업 실패" }; }
