@@ -183,16 +183,16 @@ async function writeAiAudit(db: ReturnType<typeof createClient>, profile: any, a
 
 const AI_GITHUB_REPO = "ak54656867/police-rp-intranet";
 const AI_GITHUB_PROTECTED_PATHS = [
-  /^supabase\\/config\\.toml$/,
-  /^supabase\\/functions\\/discord-interactions\\/index\\.ts$/,
-  /^src\\/.*auth/i,
-  /^src\\/.*login/i,
-  /^src\\/.*oauth/i,
-  /^\\.github\\/workflows\\/.*$/,
+  /^supabase\/config\.toml$/,
+  /^supabase\/functions\/discord-interactions\/index\.ts$/,
+  /^src\/.*auth/i,
+  /^src\/.*login/i,
+  /^src\/.*oauth/i,
+  /^\.github\/workflows\/.*$/,
 ];
 
 function assertAiGithubPath(path: string) {
-  const normalized = path.replace(/^\\/+/, "").replace(/\\\\/g, "/");
+  const normalized = path.replace(/^\/+/, "").replace(/\\/g, "/");
   if (!normalized || normalized.split("/").some((part) => part === "..") ||
       AI_GITHUB_PROTECTED_PATHS.some((pattern) => pattern.test(normalized))) {
     throw new Error("인증·로그인·OAuth·배포 핵심 파일은 AI가 직접 변경할 수 없습니다.");
