@@ -284,7 +284,7 @@ async function aiGithubAction(operation: string, args: any) {
 const AI_SUPABASE_PROJECT_REF = "lnauhbnisreigaqoeabq";
 
 async function aiSupabaseManagementRequest(path: string, init: RequestInit = {}) {
-  const token = Deno.env.get("SUPABASE_ACCESS_TOKEN");
+  const token = Deno.env.get("SB_ACCESS_TOKEN") || Deno.env.get("SUPABASE_ACCESS_TOKEN");
   if (!token) throw new Error("SUPABASE_ACCESS_TOKEN Secret이 설정되지 않았습니다.");
   const response = await fetch("https://api.supabase.com" + path, {
     ...init,
