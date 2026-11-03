@@ -75,6 +75,33 @@ const AI_PROTECTED_MODULES = new Set([
 ]);
 
 async function aiManageRecords(db: ReturnType<typeof createClient>, profile: any, operation: string, args: any) {
+  if (operation === "search_records") {
+    const query = String(args.query ?? "").trim().toLowerCase();
+    const terms = Array.from(new Set([
+      ...query.split(/[\\s,!?·]+/).filter((v) => v.length >= 2),
+      ...( /가입|신청|지원|등록/.test(query) ? ["가입", "신청", "join", "signup", "application", "pending", "대기", "승인"] : [] ),
+    ])).slice(0, 20);
+    const { data, error } = await db.from("shared_records")
+      .select("module,record_id,payload,updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(1000);
+    if (error) throw error;
+    const rows = data ?? [];
+    const matched = rows.filter((row: any) => {
+      const haystack = (String(row.module ?? "") + " " + JSON.stringify(row.payload ?? {})).toLowerCase();
+      return terms.some((term) => haystack.includes(term));
+    });
+    const counts: Record<string, number> = {};
+    for (const row of matched) counts[String(row.module)] = (counts[String(row.module)] ?? 0) + 1;
+    return {
+      operation,
+      query,
+      scanned: rows.length,
+      truncated: rows.length >= 1000,
+      modules: Object.entries(counts).map(([module, count]) => ({ module, matches: count })),
+      records: matched.slice(0, 40),
+    };
+  }
   const moduleName = String(args.module ?? "").trim();
   if (!moduleName || moduleName.length > 80 || AI_PROTECTED_MODULES.has(moduleName)) {
     throw new Error("모듈명이 비어 있거나 시스템 보호 모듈입니다.");
@@ -401,6 +428,7 @@ async function aiAssistantAction(db: ReturnType<typeof createClient>, interactio
 
   const tools = [
     { type: "function", function: { name: "list_records", description: "지정한 인트라넷 모듈의 최신 기록을 조회한다.", parameters: { type: "object", properties: { module: { type: "string", minLength: 1, maxLength: 80 }, limit: { type: "integer", minimum: 1, maximum: 50 } }, required: ["module"], additionalProperties: false } } },
+    { type: "function", function: { name: "search_records", description: "모듈명을 몰라도 인트라넷 전체 shared_records에서 자연어 키워드로 기록을 검색한다. 가입 신청, 신청 대기, 사건, 근태 등 사용자가 모듈명을 말하지 않은 조회 요청에는 반드시 이 도구를 먼저 사용한다.", parameters: { type: "object", properties: { query: { type: "string", minLength: 1, maxLength: 200 } }, required: ["query"], additionalProperties: false } } },
     { type: "function", function: { name: "create_record", description: "인트라넷 모듈에 새 기록을 생성한다. 사용자가 명시적으로 생성 요청한 경우에만 호출한다.", parameters: { type: "object", properties: { module: { type: "string", minLength: 1, maxLength: 80 }, record_id: { type: "string" }, payload: { type: "object" }, reason: { type: "string" } }, required: ["module", "payload", "reason"], additionalProperties: false } } },
     { type: "function", function: { name: "update_record", description: "기존 인트라넷 기록의 필드를 수정한다. payload는 변경할 필드만 전달한다.", parameters: { type: "object", properties: { module: { type: "string", minLength: 1, maxLength: 80 }, record_id: { type: "string" }, payload: { type: "object" }, reason: { type: "string" } }, required: ["module", "record_id", "payload", "reason"], additionalProperties: false } } },
     { type: "function", function: { name: "delete_record", description: "기존 인트라넷 기록을 영구 삭제한다. 사용자가 삭제를 명시적으로 요청한 경우에만 호출한다.", parameters: { type: "object", properties: { module: { type: "string", minLength: 1, maxLength: 80 }, record_id: { type: "string" }, reason: { type: "string" } }, required: ["module", "record_id", "reason"], additionalProperties: false } } },
@@ -418,7 +446,7 @@ async function aiAssistantAction(db: ReturnType<typeof createClient>, interactio
     { type: "function", function: { name: "supabase_delete_function", description: "Supabase Edge Function을 삭제한다. discord-interactions는 보호된다.", parameters: { type: "object", properties: { slug: { type: "string" } }, required: ["slug"], additionalProperties: false } } },
   ];
   const messages: any[] = [
-    { role: "system", content: "너는 경찰 RP 인트라넷 최고 관리자 전용 운영 AI다. 사용자의 자연어 요청을 분석해 필요한 경우 제공된 도구를 실제 호출한다. 조회 요청은 조회 도구를 사용한다. 생성·수정·삭제는 사용자가 해당 변경을 분명히 요청했을 때만 실행하며, 정보가 부족하면 먼저 질문한다. 삭제는 정확한 대상과 record_id가 확인되지 않으면 실행하지 않는다. 실행 전 조회로 대상을 특정하고, 성공 결과가 반환된 뒤에만 완료라고 말한다. 로그인, Discord OAuth, 인증·보안 설정, Edge Function 핵심 코드, GitHub Actions 워크플로, 임의 코드 실행은 도구로 변경할 수 없다. Supabase 읽기 전용 SQL과 명시적 요청에 따른 SQL 스키마 변경은 관리 API로 실행한다. GitHub의 비보호 일반 파일 조회·수정 및 허용된 main 배포 워크플로 실행은 가능하다. 업무 모듈 전체를 관리할 수 있다. 시스템 보호 모듈은 수정할 수 없다. 관리자 표시정보: " + JSON.stringify({ name: profile.roblox_username || profile.display_name, rank: profile.rank, position: profile.position, department: profile.department }) },
+    { role: "system", content: "너는 경찰 RP 인트라넷 최고 관리자 전용 운영 AI다. 사용자의 자연어 요청을 분석해 필요한 경우 제공된 도구를 실제 호출한다. 조회 요청은 조회 도구를 사용한다. 사용자가 모듈명을 말하지 않아도 절대 모듈명을 되묻지 말고 search_records로 전체 기록을 먼저 검색해 적절한 모듈을 스스로 찾아라. 특히 "가입 신청 있어?", "신청 온 거 있어?" 같은 질문은 search_records로 가입·신청·대기 관련 기록을 검색하고, 결과를 바탕으로 신청 건수와 신청자 정보를 간결하게 답하라. 검색 결과가 0건이면 신청이 없다고 답하라. 모듈명이 확인된 뒤에만 list_records를 사용하라. 생성·수정·삭제는 사용자가 해당 변경을 분명히 요청했을 때만 실행하며, 정보가 부족하면 먼저 질문한다. 삭제는 정확한 대상과 record_id가 확인되지 않으면 실행하지 않는다. 실행 전 조회로 대상을 특정하고, 성공 결과가 반환된 뒤에만 완료라고 말한다. 로그인, Discord OAuth, 인증·보안 설정, Edge Function 핵심 코드, GitHub Actions 워크플로, 임의 코드 실행은 도구로 변경할 수 없다. Supabase 읽기 전용 SQL과 명시적 요청에 따른 SQL 스키마 변경은 관리 API로 실행한다. GitHub의 비보호 일반 파일 조회·수정 및 허용된 main 배포 워크플로 실행은 가능하다. 업무 모듈 전체를 관리할 수 있다. 시스템 보호 모듈은 수정할 수 없다. 관리자 표시정보: " + JSON.stringify({ name: profile.roblox_username || profile.display_name, rank: profile.rank, position: profile.position, department: profile.department }) },
     { role: "user", content: prompt.slice(0, 1500) },
   ];
 
