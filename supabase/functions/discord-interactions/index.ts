@@ -476,7 +476,6 @@ async function processAction(db: ReturnType<typeof createClient>, interaction: a
     }
     if (interaction.type === 2) {
       const command = String(interaction.data?.name ?? "");
-      if (command === COMMANDS.aiCommand) return interactionResponse(await aiAssistantAction(db, interaction));
       const user = discordUser(interaction);
       if (!user?.id) return interactionResponse("Discord 서버에서 실행해 주세요.");
 
@@ -635,11 +634,6 @@ Deno.serve(async (request) => {
       return interactionResponse("경찰청 통합 인트라넷: https://police-rp-intranet.aclclouds.online/");
     }
 
-    if (command === COMMANDS.aiCommand) {
-      const prompt = interaction.data?.options?.find((option: any) => option.name === "prompt")?.value;
-      if (!String(prompt ?? "").trim()) return interactionResponse("명령 내용을 입력해 주세요.");
-      return json({ type: 5 });
-    }
 
     if (command === COMMANDS.announcement) {
       return announcementDestinationPicker();
@@ -668,7 +662,7 @@ Deno.serve(async (request) => {
       ]);
     }
 
-    if (command !== COMMANDS.attendanceIn && command !== COMMANDS.attendanceOut) {
+    if (command !== COMMANDS.attendanceIn && command !== COMMANDS.attendanceOut && command !== COMMANDS.aiCommand) {
       return interactionResponse("지원하지 않는 명령입니다.");
     }
   } else if (interaction.type === 3) {
