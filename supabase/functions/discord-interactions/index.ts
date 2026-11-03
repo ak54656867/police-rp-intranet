@@ -68,14 +68,17 @@ function interactionResponse(content: string) {
   return json({ type: 4, data: { content } });
 }
 
-const AI_MANAGED_MODULES = new Set([
-  "attendance", "notices", "incidents", "wanted", "fines", "assets",
-  "personnel", "org", "permissionSets", "documents", "approvals",
+// 최고 관리자 AI는 shared_records 전 모듈을 관리할 수 있다.
+ // 인증·감사·동기화 시스템 레코드는 직접 변경하지 못하도록 보호한다.
+const AI_PROTECTED_MODULES = new Set([
+  "audit", "discord_announcement_sync", "auth", "oauth", "sessions",
 ]);
 
 async function aiManageRecords(db: ReturnType<typeof createClient>, profile: any, operation: string, args: any) {
-  const moduleName = String(args.module ?? "");
-  if (!AI_MANAGED_MODULES.has(moduleName)) throw new Error("허용되지 않은 관리 모듈입니다.");
+  const moduleName = String(args.module ?? "").trim();
+  if (!moduleName || moduleName.length > 80 || AI_PROTECTED_MODULES.has(moduleName)) {
+    throw new Error("모듈명이 비어 있거나 시스템 보호 모듈입니다.");
+  }
   const recordId = String(args.record_id ?? "").trim();
   const limit = Math.max(1, Math.min(50, Number(args.limit ?? 20) || 20));
 
@@ -119,7 +122,7 @@ async function aiManageRecords(db: ReturnType<typeof createClient>, profile: any
   }
 
   if (operation === "delete_record") {
-    if (moduleName === "permissionSets") throw new Error("권한 그룹 원본 삭제는 AI에서 직접 지원하지 않습니다.");
+    if (AI_PROTECTED_MODULES.has(moduleName)) throw new Error("시스템 보호 모듈은 삭제할 수 없습니다.");
     const { data: existing, error: readError } = await db.from("shared_records")
       .select("record_id").eq("module", moduleName).eq("record_id", recordId).maybeSingle();
     if (readError) throw readError;
@@ -131,6 +134,36 @@ async function aiManageRecords(db: ReturnType<typeof createClient>, profile: any
     return { success: true, operation, module: moduleName, record_id: recordId };
   }
   throw new Error("지원하지 않는 AI 작업입니다.");
+}
+
+async function aiManageProfile(db: ReturnType<typeof createClient>, profile: any, operation: string, args: any) {
+  const target = String(args.discord_id ?? "").trim();
+  if (!target) throw new Error("대상 Discord ID가 필요합니다.");
+  const { data: targetProfile, error } = await db.from("profiles")
+    .select("id,discord_id,display_name,roblox_username,rank,position,department,role,status,active,permissions")
+    .eq("discord_id", target).maybeSingle();
+  if (error) throw error;
+  if (!targetProfile) throw new Error("대상 인트라넷 계정을 찾을 수 없습니다.");
+  if (operation === "get_profile") return { profile: targetProfile };
+  if (operation !== "update_profile") throw new Error("지원하지 않는 프로필 작업입니다.");
+
+  const input = args.changes;
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("변경할 프로필 정보가 필요합니다.");
+  const allowed = new Set(["display_name","roblox_username","rank","position","department","role","status","active","permissions"]);
+  const changes: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (!allowed.has(key)) throw new Error("수정할 수 없는 프로필 필드: " + key);
+    changes[key] = value;
+  }
+  // 최고 관리자 본인의 소유권과 Discord 연결은 AI 요청으로 변경할 수 없다.
+  if (target === "285388357272600578") {
+    delete changes.role; delete changes.active; delete changes.status; delete changes.permissions;
+  }
+  if (!Object.keys(changes).length) throw new Error("적용 가능한 변경사항이 없습니다.");
+  const { error: updateError } = await db.from("profiles").update(changes).eq("id", targetProfile.id);
+  if (updateError) throw updateError;
+  await writeAiAudit(db, profile, "AI 인사 프로필 수정", targetProfile.roblox_username || target, args.reason);
+  return { success: true, discord_id: target, changed_fields: Object.keys(changes) };
 }
 
 async function writeAiAudit(db: ReturnType<typeof createClient>, profile: any, action: string, detail: string, reason: unknown) {
@@ -167,12 +200,14 @@ async function aiAssistantAction(db: ReturnType<typeof createClient>, interactio
   if (!apiKey) throw new Error("GROQ_API_KEY 서버 Secret이 설정되지 않았습니다.");
 
   const tools = [
-    { type: "function", function: { name: "list_records", description: "지정한 인트라넷 모듈의 최신 기록을 조회한다.", parameters: { type: "object", properties: { module: { type: "string", enum: [...AI_MANAGED_MODULES] }, limit: { type: "integer", minimum: 1, maximum: 50 } }, required: ["module"], additionalProperties: false } } },
+    { type: "function", function: { name: "list_records", description: "지정한 인트라넷 모듈의 최신 기록을 조회한다.", parameters: { type: "object", properties: { module: { type: "string", minLength: 1, maxLength: 80 }, limit: { type: "integer", minimum: 1, maximum: 50 } }, required: ["module"], additionalProperties: false } } },
     { type: "function", function: { name: "create_record", description: "인트라넷 모듈에 새 기록을 생성한다. 사용자가 명시적으로 생성 요청한 경우에만 호출한다.", parameters: { type: "object", properties: { module: { type: "string", enum: [...AI_MANAGED_MODULES] }, record_id: { type: "string" }, payload: { type: "object" }, reason: { type: "string" } }, required: ["module", "payload", "reason"], additionalProperties: false } } },
     { type: "function", function: { name: "update_record", description: "기존 인트라넷 기록의 필드를 수정한다. payload는 변경할 필드만 전달한다.", parameters: { type: "object", properties: { module: { type: "string", enum: [...AI_MANAGED_MODULES] }, record_id: { type: "string" }, payload: { type: "object" }, reason: { type: "string" } }, required: ["module", "record_id", "payload", "reason"], additionalProperties: false } } },
     { type: "function", function: { name: "delete_record", description: "기존 인트라넷 기록을 영구 삭제한다. 사용자가 삭제를 명시적으로 요청한 경우에만 호출한다.", parameters: { type: "object", properties: { module: { type: "string", enum: [...AI_MANAGED_MODULES] }, record_id: { type: "string" }, reason: { type: "string" } }, required: ["module", "record_id", "reason"], additionalProperties: false } } },
   ];
 
+    { type: "function", function: { name: "get_profile", description: "Discord ID로 인트라넷 계정을 조회한다.", parameters: { type: "object", properties: { discord_id: { type: "string" } }, required: ["discord_id"], additionalProperties: false } } },
+    { type: "function", function: { name: "update_profile", description: "Discord ID로 인트라넷 계정의 인사정보와 권한을 수정한다. 사용자가 명시적으로 요청한 경우에만 호출한다.", parameters: { type: "object", properties: { discord_id: { type: "string" }, changes: { type: "object" }, reason: { type: "string" } }, required: ["discord_id", "changes", "reason"], additionalProperties: false } } },
   const messages: any[] = [
     { role: "system", content: "너는 경찰 RP 인트라넷 최고 관리자 전용 운영 AI다. 사용자의 자연어 요청을 분석해 필요한 경우 제공된 도구를 실제 호출한다. 조회 요청은 조회 도구를 사용한다. 생성·수정·삭제는 사용자가 해당 변경을 분명히 요청했을 때만 실행하며, 정보가 부족하면 먼저 질문한다. 삭제는 정확한 대상과 record_id가 확인되지 않으면 실행하지 않는다. 실행 전 조회로 대상을 특정하고, 성공 결과가 반환된 뒤에만 완료라고 말한다. 로그인, Discord OAuth, 인증·보안 설정, 임의 SQL, 임의 코드 실행은 도구로 변경할 수 없다. 허용 모듈: " + [...AI_MANAGED_MODULES].join(", ") + ". 관리자 표시정보: " + JSON.stringify({ name: profile.roblox_username || profile.display_name, rank: profile.rank, position: profile.position, department: profile.department }) },
     { role: "user", content: prompt.slice(0, 1500) },
@@ -206,7 +241,10 @@ async function aiAssistantAction(db: ReturnType<typeof createClient>, interactio
       try { args = JSON.parse(String(call.function?.arguments ?? "{}")); }
       catch { throw new Error("AI 작업 인수를 해석하지 못했습니다."); }
       let output: unknown;
-      try { output = await aiManageRecords(db, profile, name, args); }
+      try {
+        if (name === "get_profile" || name === "update_profile") output = await aiManageProfile(db, profile, name, args);
+        else output = await aiManageRecords(db, profile, name, args);
+      }
       catch (error) { output = { success: false, error: error instanceof Error ? error.message : "작업 실패" }; }
       messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(output).slice(0, 6000) });
     }
