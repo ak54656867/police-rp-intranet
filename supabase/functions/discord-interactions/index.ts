@@ -248,6 +248,24 @@ async function aiGithubAction(operation: string, args: any) {
     });
     return { success: true, path, commit_sha: result.commit?.sha, html_url: result.content?.html_url };
   }
+  if (operation === "github_create_file" || operation === "github_delete_file") {
+    const path = assertAiGithubPath(String(args.path ?? ""));
+    const message = String(args.message ?? "").slice(0, 120);
+    const ref = String(args.ref ?? "main");
+    if (!message) throw new Error("커밋 메시지가 필요합니다.");
+    const url = "/repos/" + AI_GITHUB_REPO + "/contents/" + path.split("/").map(encodeURIComponent).join("/");
+    if (operation === "github_create_file") {
+      const content = String(args.content ?? "");
+      if (content.length > 90000) throw new Error("파일이 너무 큽니다.");
+      const encoded = btoa(String.fromCharCode(...new TextEncoder().encode(content)));
+      const result = await aiGithubRequest(url, { method: "PUT", body: JSON.stringify({ message, content: encoded, branch: ref }) });
+      return { success: true, path, commit_sha: result.commit?.sha, html_url: result.content?.html_url };
+    }
+    const current = await aiGithubRequest(url + "?ref=" + encodeURIComponent(ref));
+    if (Array.isArray(current) || current.type !== "file") throw new Error("일반 파일만 삭제할 수 있습니다.");
+    const result = await aiGithubRequest(url, { method: "DELETE", body: JSON.stringify({ message, sha: current.sha, branch: ref }) });
+    return { success: true, path, commit_sha: result.commit?.sha };
+  }
   if (operation === "github_dispatch_workflow") {
     const workflow = String(args.workflow ?? "");
     if (!/^[a-zA-Z0-9._-]+\\.ya?ml$/.test(workflow) || workflow.includes("..")) throw new Error("허용되지 않는 워크플로 파일명입니다.");
@@ -350,6 +368,8 @@ async function aiAssistantAction(db: ReturnType<typeof createClient>, interactio
     { type: "function", function: { name: "update_profile", description: "Discord ID로 인트라넷 계정의 인사정보와 권한을 수정한다. 사용자가 명시적으로 요청한 경우에만 호출한다.", parameters: { type: "object", properties: { discord_id: { type: "string" }, changes: { type: "object" }, reason: { type: "string" } }, required: ["discord_id", "changes", "reason"], additionalProperties: false } } },
     { type: "function", function: { name: "github_get_file", description: "경찰 RP 인트라넷 저장소의 비보호 파일을 조회한다.", parameters: { type: "object", properties: { path: { type: "string" }, ref: { type: "string" } }, required: ["path"], additionalProperties: false } } },
     { type: "function", function: { name: "github_update_file", description: "경찰 RP 인트라넷 저장소의 비보호 파일을 커밋으로 수정한다. 사용자가 명시적으로 수정 요청한 경우에만 호출한다.", parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" }, message: { type: "string" }, ref: { type: "string" } }, required: ["path", "content", "message"], additionalProperties: false } } },
+    { type: "function", function: { name: "github_create_file", description: "비보호 저장소 파일을 생성한다.", parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" }, message: { type: "string" }, ref: { type: "string" } }, required: ["path", "content", "message"], additionalProperties: false } } },
+    { type: "function", function: { name: "github_delete_file", description: "비보호 저장소 파일을 삭제한다.", parameters: { type: "object", properties: { path: { type: "string" }, message: { type: "string" }, ref: { type: "string" } }, required: ["path", "message"], additionalProperties: false } } },
     { type: "function", function: { name: "github_dispatch_workflow", description: "허용된 GitHub Actions 워크플로를 main 브랜치에서 실행한다.", parameters: { type: "object", properties: { workflow: { type: "string" }, ref: { type: "string" }, inputs: { type: "object" } }, required: ["workflow"], additionalProperties: false } } },
     { type: "function", function: { name: "supabase_read_sql", description: "Supabase DB에 읽기 전용 SQL SELECT/CTE/EXPLAIN 쿼리를 실행한다.", parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"], additionalProperties: false } } },
     { type: "function", function: { name: "supabase_apply_sql", description: "Supabase DB에 SQL 스키마 또는 데이터 변경을 실행한다. 명시적 요청과 변경 사유가 필요하며 삭제·파괴적 작업은 사전 확인을 요청한다.", parameters: { type: "object", properties: { query: { type: "string" }, reason: { type: "string" } }, required: ["query", "reason"], additionalProperties: false } } },
