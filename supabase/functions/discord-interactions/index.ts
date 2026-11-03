@@ -262,6 +262,66 @@ async function aiGithubAction(operation: string, args: any) {
   throw new Error("지원하지 않는 GitHub 작업입니다.");
 }
 
+
+const AI_SUPABASE_PROJECT_REF = "lnauhbnisreigaqoeabq";
+
+async function aiSupabaseManagementRequest(path: string, init: RequestInit = {}) {
+  const token = Deno.env.get("SUPABASE_ACCESS_TOKEN");
+  if (!token) throw new Error("SUPABASE_ACCESS_TOKEN Secret이 설정되지 않았습니다.");
+  const response = await fetch("https://api.supabase.com" + path, {
+    ...init,
+    headers: {
+      "Authorization": "Bearer " + token,
+      "Content-Type": "application/json",
+      ...(init.headers ?? {}),
+    },
+  });
+  const body = await response.text();
+  let data: any = {};
+  try { data = body ? JSON.parse(body) : {}; } catch { data = { message: body.slice(0, 500) }; }
+  if (!response.ok) {
+    console.error("Supabase Management API failed", response.status, JSON.stringify(data).slice(0, 1000));
+    throw new Error("Supabase 관리 API 오류 (" + response.status + "): " + String(data.message ?? "요청 실패").slice(0, 250));
+  }
+  return data;
+}
+
+async function aiSupabaseAction(operation: string, args: any) {
+  if (operation === "supabase_read_sql") {
+    const query = String(args.query ?? "").trim();
+    if (!query || query.length > 12000 || !/^(select|with|explain)\\b/i.test(query) ||
+        /;\\s*(select|insert|update|delete|alter|drop|create|grant|revoke|truncate)\\b/i.test(query) ||
+        /\\b(insert|update|delete|alter|drop|create|grant|revoke|truncate|copy|call|do)\\b/i.test(query)) {
+      throw new Error("읽기 전용 SELECT/CTE/EXPLAIN 쿼리만 허용됩니다.");
+    }
+    return await aiSupabaseManagementRequest("/v1/projects/" + AI_SUPABASE_PROJECT_REF + "/database/query", {
+      method: "POST", body: JSON.stringify({ query }),
+    });
+  }
+  if (operation === "supabase_apply_sql") {
+    const query = String(args.query ?? "").trim();
+    const reason = String(args.reason ?? "").trim();
+    if (!query || query.length > 40000 || !reason) throw new Error("SQL 또는 변경 사유가 비어 있거나 너무 깁니다.");
+    if (/\\b(copy|\bprogram\b|\\.\\.)\\b/i.test(query)) throw new Error("허용되지 않는 SQL 구문입니다.");
+    const result = await aiSupabaseManagementRequest("/v1/projects/" + AI_SUPABASE_PROJECT_REF + "/database/query", {
+      method: "POST", body: JSON.stringify({ query }),
+    });
+    return { success: true, result, warning: "DB 변경 요청을 실행했습니다. 실제 영향은 후속 검증이 필요합니다." };
+  }
+  if (operation === "supabase_list_functions") {
+    return await aiSupabaseManagementRequest("/v1/projects/" + AI_SUPABASE_PROJECT_REF + "/functions");
+  }
+  if (operation === "supabase_delete_function") {
+    const slug = String(args.slug ?? "");
+    if (!/^[a-z0-9-]{1,60}$/.test(slug) || slug === "discord-interactions") {
+      throw new Error("유효하지 않거나 보호된 Edge Function입니다.");
+    }
+    await aiSupabaseManagementRequest("/v1/projects/" + AI_SUPABASE_PROJECT_REF + "/functions/" + encodeURIComponent(slug), { method: "DELETE" });
+    return { success: true, deleted: slug };
+  }
+  throw new Error("지원하지 않는 Supabase 작업입니다.");
+}
+
 async function aiAssistantAction(db: ReturnType<typeof createClient>, interaction: any) {
   const user = discordUser(interaction);
   if (!user?.id) throw new Error("Discord 사용자 정보를 확인할 수 없습니다.");
@@ -291,9 +351,13 @@ async function aiAssistantAction(db: ReturnType<typeof createClient>, interactio
     { type: "function", function: { name: "github_get_file", description: "경찰 RP 인트라넷 저장소의 비보호 파일을 조회한다.", parameters: { type: "object", properties: { path: { type: "string" }, ref: { type: "string" } }, required: ["path"], additionalProperties: false } } },
     { type: "function", function: { name: "github_update_file", description: "경찰 RP 인트라넷 저장소의 비보호 파일을 커밋으로 수정한다. 사용자가 명시적으로 수정 요청한 경우에만 호출한다.", parameters: { type: "object", properties: { path: { type: "string" }, content: { type: "string" }, message: { type: "string" }, ref: { type: "string" } }, required: ["path", "content", "message"], additionalProperties: false } } },
     { type: "function", function: { name: "github_dispatch_workflow", description: "허용된 GitHub Actions 워크플로를 main 브랜치에서 실행한다.", parameters: { type: "object", properties: { workflow: { type: "string" }, ref: { type: "string" }, inputs: { type: "object" } }, required: ["workflow"], additionalProperties: false } } },
+    { type: "function", function: { name: "supabase_read_sql", description: "Supabase DB에 읽기 전용 SQL SELECT/CTE/EXPLAIN 쿼리를 실행한다.", parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"], additionalProperties: false } } },
+    { type: "function", function: { name: "supabase_apply_sql", description: "Supabase DB에 SQL 스키마 또는 데이터 변경을 실행한다. 명시적 요청과 변경 사유가 필요하며 삭제·파괴적 작업은 사전 확인을 요청한다.", parameters: { type: "object", properties: { query: { type: "string" }, reason: { type: "string" } }, required: ["query", "reason"], additionalProperties: false } } },
+    { type: "function", function: { name: "supabase_list_functions", description: "Supabase 프로젝트의 Edge Functions 목록을 조회한다.", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+    { type: "function", function: { name: "supabase_delete_function", description: "Supabase Edge Function을 삭제한다. discord-interactions는 보호된다.", parameters: { type: "object", properties: { slug: { type: "string" } }, required: ["slug"], additionalProperties: false } } },
   ];
   const messages: any[] = [
-    { role: "system", content: "너는 경찰 RP 인트라넷 최고 관리자 전용 운영 AI다. 사용자의 자연어 요청을 분석해 필요한 경우 제공된 도구를 실제 호출한다. 조회 요청은 조회 도구를 사용한다. 생성·수정·삭제는 사용자가 해당 변경을 분명히 요청했을 때만 실행하며, 정보가 부족하면 먼저 질문한다. 삭제는 정확한 대상과 record_id가 확인되지 않으면 실행하지 않는다. 실행 전 조회로 대상을 특정하고, 성공 결과가 반환된 뒤에만 완료라고 말한다. 로그인, Discord OAuth, 인증·보안 설정, Edge Function 핵심 코드, GitHub Actions 워크플로, 임의 SQL, 임의 코드 실행은 도구로 변경할 수 없다. GitHub의 비보호 일반 파일 조회·수정 및 허용된 main 배포 워크플로 실행은 가능하다. 업무 모듈 전체를 관리할 수 있다. 시스템 보호 모듈은 수정할 수 없다. 관리자 표시정보: " + JSON.stringify({ name: profile.roblox_username || profile.display_name, rank: profile.rank, position: profile.position, department: profile.department }) },
+    { role: "system", content: "너는 경찰 RP 인트라넷 최고 관리자 전용 운영 AI다. 사용자의 자연어 요청을 분석해 필요한 경우 제공된 도구를 실제 호출한다. 조회 요청은 조회 도구를 사용한다. 생성·수정·삭제는 사용자가 해당 변경을 분명히 요청했을 때만 실행하며, 정보가 부족하면 먼저 질문한다. 삭제는 정확한 대상과 record_id가 확인되지 않으면 실행하지 않는다. 실행 전 조회로 대상을 특정하고, 성공 결과가 반환된 뒤에만 완료라고 말한다. 로그인, Discord OAuth, 인증·보안 설정, Edge Function 핵심 코드, GitHub Actions 워크플로, 임의 코드 실행은 도구로 변경할 수 없다. Supabase 읽기 전용 SQL과 명시적 요청에 따른 SQL 스키마 변경은 관리 API로 실행한다. GitHub의 비보호 일반 파일 조회·수정 및 허용된 main 배포 워크플로 실행은 가능하다. 업무 모듈 전체를 관리할 수 있다. 시스템 보호 모듈은 수정할 수 없다. 관리자 표시정보: " + JSON.stringify({ name: profile.roblox_username || profile.display_name, rank: profile.rank, position: profile.position, department: profile.department }) },
     { role: "user", content: prompt.slice(0, 1500) },
   ];
 
@@ -328,6 +392,7 @@ async function aiAssistantAction(db: ReturnType<typeof createClient>, interactio
       try {
         if (name === "get_profile" || name === "update_profile") output = await aiManageProfile(db, profile, name, args);
         else if (name.startsWith("github_")) output = await aiGithubAction(name, args);
+        else if (name.startsWith("supabase_")) output = await aiSupabaseAction(name, args);
         else output = await aiManageRecords(db, profile, name, args);
       }
       catch (error) { output = { success: false, error: error instanceof Error ? error.message : "작업 실패" }; }
