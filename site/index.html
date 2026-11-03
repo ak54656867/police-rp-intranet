@@ -287,6 +287,16 @@ async function personnelAction(id,action){const profile=rosterProfiles.find(x=>S
  const {data:ps,error}=await supabaseClient.from('profiles').select('*').order('created_at',{ascending:false});
  if(error){toast('계정 조회 실패: '+error.message);return;}
  rosterProfiles=ps||[];
+ await ensureDefaultPermissionGroups();
+ for(const profile of rosterProfiles){
+  if(profile.status!=='approved'||profile.active!==true||profile.role==='admin')continue;
+  const groupId=defaultPermissionGroupFor(profile);
+  if(JSON.stringify(Array.isArray(profile.permissions)?profile.permissions:[])!==JSON.stringify([groupId])){
+   const {error:permissionError}=await supabaseClient.from('profiles').update({permissions:[groupId]}).eq('id',profile.id);
+   if(permissionError)throw new Error('기존 계정 기본 권한 자동 배정 실패: '+permissionError.message);
+   profile.permissions=[groupId];
+  }
+ }
  const ranks=['순경','경장','경사','경위','경감','경정','총경','경무관','치안감','치안정감','치안총감'];
  const depts=[...new Set([...(data.departments||[]),...ps.map(p=>p.department).filter(Boolean)])];
  const positions=[...new Set([...(data.positions||[]),...ps.map(p=>p.position).filter(Boolean)])];
