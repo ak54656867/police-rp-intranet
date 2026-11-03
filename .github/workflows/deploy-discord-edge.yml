@@ -21,4 +21,4 @@ jobs:
             echo "::error::Missing SUPABASE_ACCESS_TOKEN repository secret"
             exit 1
           fi
-          supabase functions deploy discord-interactions --project-ref lnauhbnisreigaqoeabq
+          supabase functions deploy discord-interactions --project-ref lnauhbnisreigaqoeabq --yes
