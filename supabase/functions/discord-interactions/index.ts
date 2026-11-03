@@ -476,6 +476,7 @@ async function processAction(db: ReturnType<typeof createClient>, interaction: a
     }
     if (interaction.type === 2) {
       const command = String(interaction.data?.name ?? "");
+      if (command === COMMANDS.aiCommand) return interactionResponse(await aiAssistantAction(db, interaction));
       const user = discordUser(interaction);
       if (!user?.id) return interactionResponse("Discord 서버에서 실행해 주세요.");
 
