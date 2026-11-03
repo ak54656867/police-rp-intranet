@@ -14,6 +14,7 @@ const COMMANDS = {
   custody: "구금",
   intranet: "인트라넷",
   announcement: "공지",
+  aiCommand: "명령하기",
 };
 
 const ANNOUNCEMENT_CHANNEL_IDS = new Set(["1563868823235469346", "1563868823235469347"]);
@@ -65,6 +66,46 @@ async function verifyDiscordRequest(request: Request, body: string): Promise<boo
 
 function interactionResponse(content: string) {
   return json({ type: 4, data: { content } });
+}
+
+async function aiAssistantAction(db: ReturnType<typeof createClient>, interaction: any) {
+  const user = discordUser(interaction);
+  if (!user?.id) throw new Error("Discord 사용자 정보를 확인할 수 없습니다.");
+  const { data: profile, error } = await db.from("profiles")
+    .select("id,roblox_username,display_name,role,status,active,department,rank,position")
+    .eq("discord_id", user.id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!profile || !profile.active || (profile.status !== "approved" && profile.role !== "admin")) {
+    throw new Error("승인된 인트라넷 계정만 AI 명령을 사용할 수 있습니다.");
+  }
+  const prompt = String(interaction.data?.options?.find((option: any) => option.name === "prompt")?.value ?? "").trim();
+  if (!prompt) throw new Error("명령 내용을 입력해 주세요.");
+  const apiKey = Deno.env.get("OPENAI_API_KEY");
+  if (!apiKey) throw new Error("OPENAI_API_KEY 서버 Secret이 설정되지 않았습니다.");
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "gpt-4.1-mini",
+      messages: [
+        { role: "system", content: "너는 한국어 경찰 RP 인트라넷 보조 AI다. 친절하고 간결하게 답한다. 실제 DB 작업이나 권한 변경을 수행했다고 거짓말하지 않는다. 현재 연결된 기능은 질문 답변뿐이며, 출근·퇴근 등 실제 처리는 기존 전용 슬래시 명령을 사용하라고 안내한다. 승인된 사용자의 표시 정보: " + JSON.stringify({ name: profile.roblox_username || profile.display_name, rank: profile.rank, position: profile.position, department: profile.department }) },
+        { role: "user", content: prompt.slice(0, 1500) },
+      ],
+      max_tokens: 700,
+      temperature: 0.4,
+    }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    console.error("OpenAI API request failed", response.status, JSON.stringify(result).slice(0, 1000));
+    if (response.status === 401) throw new Error("OpenAI API 키가 유효하지 않습니다. Supabase Secret을 확인해 주세요.");
+    if (response.status === 429) throw new Error("OpenAI API 사용 한도 또는 결제 한도를 확인해 주세요.");
+    throw new Error("AI 응답을 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+  }
+  const answer = String(result.choices?.[0]?.message?.content ?? "").trim();
+  if (!answer) throw new Error("AI가 빈 응답을 반환했습니다.");
+  return answer.slice(0, 1900);
 }
 
 function announcementDestinationPicker() {
@@ -435,6 +476,7 @@ async function processAction(db: ReturnType<typeof createClient>, interaction: a
     }
     if (interaction.type === 2) {
       const command = String(interaction.data?.name ?? "");
+      if (command === COMMANDS.aiCommand) return interactionResponse(await aiAssistantAction(db, interaction));
       const user = discordUser(interaction);
       if (!user?.id) return interactionResponse("Discord 서버에서 실행해 주세요.");
 
@@ -591,6 +633,12 @@ Deno.serve(async (request) => {
 
     if (command === COMMANDS.intranet) {
       return interactionResponse("경찰청 통합 인트라넷: https://police-rp-intranet.aclclouds.online/");
+    }
+
+    if (command === COMMANDS.aiCommand) {
+      const prompt = interaction.data?.options?.find((option: any) => option.name === "prompt")?.value;
+      if (!String(prompt ?? "").trim()) return interactionResponse("명령 내용을 입력해 주세요.");
+      return json({ type: 5 });
     }
 
     if (command === COMMANDS.announcement) {
