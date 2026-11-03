@@ -68,51 +68,151 @@ function interactionResponse(content: string) {
   return json({ type: 4, data: { content } });
 }
 
+const AI_MANAGED_MODULES = new Set([
+  "attendance", "notices", "incidents", "wanted", "fines", "assets",
+  "personnel", "org", "permissionSets", "documents", "approvals",
+]);
+
+async function aiManageRecords(db: ReturnType<typeof createClient>, profile: any, operation: string, args: any) {
+  const moduleName = String(args.module ?? "");
+  if (!AI_MANAGED_MODULES.has(moduleName)) throw new Error("허용되지 않은 관리 모듈입니다.");
+  const recordId = String(args.record_id ?? "").trim();
+  const limit = Math.max(1, Math.min(50, Number(args.limit ?? 20) || 20));
+
+  if (operation === "list_records") {
+    const { data, error } = await db.from("shared_records")
+      .select("record_id,payload,updated_at,updated_by")
+      .eq("module", moduleName)
+      .order("updated_at", { ascending: false })
+      .limit(limit);
+    if (error) throw error;
+    return { operation, module: moduleName, records: data ?? [] };
+  }
+
+  if (operation === "create_record") {
+    const payload = args.payload;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("payload 객체가 필요합니다.");
+    const id = recordId || crypto.randomUUID();
+    const { error } = await db.from("shared_records").insert({
+      module: moduleName, record_id: id, payload: { ...payload, id: (payload as any).id ?? id },
+      updated_by: profile.id,
+    });
+    if (error) throw error;
+    await writeAiAudit(db, profile, "AI 레코드 생성", moduleName + "/" + id, args.reason);
+    return { success: true, operation, module: moduleName, record_id: id };
+  }
+
+  if (!recordId) throw new Error("record_id가 필요합니다.");
+  if (operation === "update_record") {
+    const payload = args.payload;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("payload 객체가 필요합니다.");
+    const { data: existing, error: readError } = await db.from("shared_records")
+      .select("payload").eq("module", moduleName).eq("record_id", recordId).maybeSingle();
+    if (readError) throw readError;
+    if (!existing) throw new Error("수정할 기록을 찾을 수 없습니다.");
+    const { error } = await db.from("shared_records").update({
+      payload: { ...(existing.payload ?? {}), ...payload }, updated_by: profile.id,
+    }).eq("module", moduleName).eq("record_id", recordId);
+    if (error) throw error;
+    await writeAiAudit(db, profile, "AI 레코드 수정", moduleName + "/" + recordId, args.reason);
+    return { success: true, operation, module: moduleName, record_id: recordId };
+  }
+
+  if (operation === "delete_record") {
+    if (moduleName === "permissionSets") throw new Error("권한 그룹 원본 삭제는 AI에서 직접 지원하지 않습니다.");
+    const { data: existing, error: readError } = await db.from("shared_records")
+      .select("record_id").eq("module", moduleName).eq("record_id", recordId).maybeSingle();
+    if (readError) throw readError;
+    if (!existing) throw new Error("삭제할 기록을 찾을 수 없습니다.");
+    const { error } = await db.from("shared_records").delete()
+      .eq("module", moduleName).eq("record_id", recordId);
+    if (error) throw error;
+    await writeAiAudit(db, profile, "AI 레코드 삭제", moduleName + "/" + recordId, args.reason);
+    return { success: true, operation, module: moduleName, record_id: recordId };
+  }
+  throw new Error("지원하지 않는 AI 작업입니다.");
+}
+
+async function writeAiAudit(db: ReturnType<typeof createClient>, profile: any, action: string, detail: string, reason: unknown) {
+  const id = crypto.randomUUID();
+  const { error } = await db.from("shared_records").insert({
+    module: "audit", record_id: id,
+    payload: {
+      id, action, detail, actor: profile.roblox_username || profile.display_name || "최고 관리자",
+      userId: profile.id, source: "Discord AI", reason: String(reason ?? "").slice(0, 500),
+      date: new Date().toISOString(),
+    },
+    updated_by: profile.id,
+  });
+  if (error) console.error("AI audit log write failed", error);
+}
+
 async function aiAssistantAction(db: ReturnType<typeof createClient>, interaction: any) {
   const user = discordUser(interaction);
   if (!user?.id) throw new Error("Discord 사용자 정보를 확인할 수 없습니다.");
-  // AI 운영 권한은 최고 관리자 Discord 계정에만 허용한다.
   const aiOwnerDiscordId = "285388357272600578";
-  if (String(user.id) !== aiOwnerDiscordId) {
-    throw new Error("이 AI 명령은 최고 관리자 전용입니다.");
-  }
+  if (String(user.id) !== aiOwnerDiscordId) throw new Error("이 AI 명령은 최고 관리자 전용입니다.");
+
   const { data: profile, error } = await db.from("profiles")
     .select("id,roblox_username,display_name,role,status,active,department,rank,position")
-    .eq("discord_id", user.id)
-    .maybeSingle();
+    .eq("discord_id", user.id).maybeSingle();
   if (error) throw error;
   if (!profile || !profile.active || (profile.status !== "approved" && profile.role !== "admin")) {
-    throw new Error("승인된 인트라넷 계정만 AI 명령을 사용할 수 있습니다.");
+    throw new Error("활성화된 최고 관리자 인트라넷 계정이 필요합니다.");
   }
+
   const prompt = String(interaction.data?.options?.find((option: any) => option.name === "prompt")?.value ?? "").trim();
   if (!prompt) throw new Error("명령 내용을 입력해 주세요.");
   const apiKey = Deno.env.get("GROQ_API_KEY");
   if (!apiKey) throw new Error("GROQ_API_KEY 서버 Secret이 설정되지 않았습니다.");
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "openai/gpt-oss-120b",
-      messages: [
-        { role: "system", content: "너는 한국어 경찰 RP 인트라넷 보조 AI다. 친절하고 간결하게 답한다. 실제 DB 작업이나 권한 변경을 수행했다고 거짓말하지 않는다. 현재 연결된 기능은 질문 답변뿐이며, 출근·퇴근 등 실제 처리는 기존 전용 슬래시 명령을 사용하라고 안내한다. 승인된 사용자의 표시 정보: " + JSON.stringify({ name: profile.roblox_username || profile.display_name, rank: profile.rank, position: profile.position, department: profile.department }) },
-        { role: "user", content: prompt.slice(0, 1500) },
-      ],
-      max_tokens: 700,
-      temperature: 0.4,
-    }),
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    console.error("Groq API request failed", response.status, JSON.stringify(result).slice(0, 1000));
-    if (response.status === 401) throw new Error("Groq API 키가 유효하지 않습니다. Supabase Secret을 확인해 주세요.");
-    if (response.status === 429) throw new Error("Groq API 사용량 제한 또는 API 키 설정을 확인해 주세요.");
-    throw new Error("AI 응답을 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.");
-  }
-  const answer = String(result.choices?.[0]?.message?.content ?? "").trim();
-  if (!answer) throw new Error("AI가 빈 응답을 반환했습니다.");
-  return answer.slice(0, 1900);
-}
 
+  const tools = [
+    { type: "function", function: { name: "list_records", description: "지정한 인트라넷 모듈의 최신 기록을 조회한다.", parameters: { type: "object", properties: { module: { type: "string", enum: [...AI_MANAGED_MODULES] }, limit: { type: "integer", minimum: 1, maximum: 50 } }, required: ["module"], additionalProperties: false } } },
+    { type: "function", function: { name: "create_record", description: "인트라넷 모듈에 새 기록을 생성한다. 사용자가 명시적으로 생성 요청한 경우에만 호출한다.", parameters: { type: "object", properties: { module: { type: "string", enum: [...AI_MANAGED_MODULES] }, record_id: { type: "string" }, payload: { type: "object" }, reason: { type: "string" } }, required: ["module", "payload", "reason"], additionalProperties: false } } },
+    { type: "function", function: { name: "update_record", description: "기존 인트라넷 기록의 필드를 수정한다. payload는 변경할 필드만 전달한다.", parameters: { type: "object", properties: { module: { type: "string", enum: [...AI_MANAGED_MODULES] }, record_id: { type: "string" }, payload: { type: "object" }, reason: { type: "string" } }, required: ["module", "record_id", "payload", "reason"], additionalProperties: false } } },
+    { type: "function", function: { name: "delete_record", description: "기존 인트라넷 기록을 영구 삭제한다. 사용자가 삭제를 명시적으로 요청한 경우에만 호출한다.", parameters: { type: "object", properties: { module: { type: "string", enum: [...AI_MANAGED_MODULES] }, record_id: { type: "string" }, reason: { type: "string" } }, required: ["module", "record_id", "reason"], additionalProperties: false } } },
+  ];
+
+  const messages: any[] = [
+    { role: "system", content: "너는 경찰 RP 인트라넷 최고 관리자 전용 운영 AI다. 사용자의 자연어 요청을 분석해 필요한 경우 제공된 도구를 실제 호출한다. 조회 요청은 조회 도구를 사용한다. 생성·수정·삭제는 사용자가 해당 변경을 분명히 요청했을 때만 실행하며, 정보가 부족하면 먼저 질문한다. 삭제는 정확한 대상과 record_id가 확인되지 않으면 실행하지 않는다. 실행 전 조회로 대상을 특정하고, 성공 결과가 반환된 뒤에만 완료라고 말한다. 로그인, Discord OAuth, 인증·보안 설정, 임의 SQL, 임의 코드 실행은 도구로 변경할 수 없다. 허용 모듈: " + [...AI_MANAGED_MODULES].join(", ") + ". 관리자 표시정보: " + JSON.stringify({ name: profile.roblox_username || profile.display_name, rank: profile.rank, position: profile.position, department: profile.department }) },
+    { role: "user", content: prompt.slice(0, 1500) },
+  ];
+
+  for (let round = 0; round < 5; round++) {
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "openai/gpt-oss-120b", messages, tools, tool_choice: "auto", max_tokens: 900, temperature: 0.2 }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      console.error("Groq API request failed", response.status, JSON.stringify(result).slice(0, 1000));
+      if (response.status === 401) throw new Error("Groq API 키가 유효하지 않습니다.");
+      if (response.status === 429) throw new Error("Groq API 사용량 제한을 확인해 주세요.");
+      throw new Error("AI 작업 요청에 실패했습니다.");
+    }
+    const message = result.choices?.[0]?.message;
+    if (!message) throw new Error("AI 응답이 비어 있습니다.");
+    messages.push(message);
+    const calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+    if (!calls.length) {
+      const answer = String(message.content ?? "").trim();
+      if (!answer) throw new Error("AI가 빈 응답을 반환했습니다.");
+      return answer.slice(0, 1900);
+    }
+    for (const call of calls) {
+      const name = String(call.function?.name ?? "");
+      let args: any;
+      try { args = JSON.parse(String(call.function?.arguments ?? "{}")); }
+      catch { throw new Error("AI 작업 인수를 해석하지 못했습니다."); }
+      let output: unknown;
+      try { output = await aiManageRecords(db, profile, name, args); }
+      catch (error) { output = { success: false, error: error instanceof Error ? error.message : "작업 실패" }; }
+      messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(output).slice(0, 6000) });
+    }
+  }
+  throw new Error("AI 작업 단계가 너무 많아 중단했습니다. 요청을 나누어 주세요.");
+}
 function announcementDestinationPicker() {
   return json({
     type: 4,
