@@ -15,6 +15,7 @@ const commands = [
   { name: "구금", description: "RP 구금 기록을 작성합니다." },
   { name: "인트라넷", description: "경찰청 통합 인트라넷 링크를 안내합니다." },
   { name: "공지", description: "일반 또는 중요 위치를 선택해 공지를 등록합니다." },
+  { name: "명령하기", description: "GPT 인트라넷 AI에게 질문하거나 요청합니다.", options: [{ type: 3, name: "prompt", description: "AI에게 전달할 질문 또는 요청", required: true, max_length: 1500 }] },
 ];
 
 const response = await fetch(
