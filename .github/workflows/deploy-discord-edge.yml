@@ -1,6 +1,11 @@
 name: Deploy Discord Edge Function
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/discord-interactions/**'
+      - '.github/workflows/deploy-discord-edge.yml'
 permissions:
   contents: read
 jobs:
