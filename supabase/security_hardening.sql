@@ -82,22 +82,28 @@ alter table public.profiles
   add constraint profiles_status_check check (status in ('pending','approved','rejected','suspended','dismissed'));
 
 -- Allow rejected applicants to resubmit through the existing application form.
+-- Rejected non-admin accounts may reapply. Normalize to least privilege.
 create or replace function public.reopen_rejected_application()
 returns trigger
 language plpgsql
+security invoker
 set search_path = public
-as $$
+as $
 begin
   if old.status='rejected'
-     and old.role='officer'
+     and old.role <> 'admin'
      and new.application_submitted=true
      and auth.uid()=old.id then
+    new.role='officer';
     new.status='pending';
     new.active=true;
+    new.rank='순경';
+    new.department='미배정';
+    new.permissions='[]'::jsonb;
   end if;
   return new;
 end;
-$$;
+$;
 
 drop trigger if exists reopen_rejected_application_trigger on public.profiles;
 create trigger reopen_rejected_application_trigger
@@ -136,14 +142,14 @@ create policy "profile self update application"
   on public.profiles for update to authenticated
   using (
     id=auth.uid()
-    and role='officer'
+    and role <> 'admin'
     and status in ('pending','rejected')
   )
   with check (
     id=auth.uid()
     and role='officer'
     and status='pending'
-    and active in (true,false)
+    and active=true
   );
 
 -- Enforce basic data invariants at the database layer, not only in forms.
