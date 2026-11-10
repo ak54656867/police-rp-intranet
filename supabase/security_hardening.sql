@@ -149,7 +149,6 @@ create policy "profile self update application"
     id=auth.uid()
     and role='officer'
     and status='pending'
-    and active=true
   );
 
 -- Enforce basic data invariants at the database layer, not only in forms.
