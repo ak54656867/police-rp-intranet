@@ -273,7 +273,6 @@ create policy "profile self update application"
     id=auth.uid()
     and role='officer'
     and status='pending'
-    and active=true
   );
 
 -- Align the database's allowed modules with the frontend's actual shared data list.
